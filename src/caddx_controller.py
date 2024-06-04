@@ -33,6 +33,7 @@ class CaddxController:
         self.panel_synced = False
         self.read_timeout = 2.0
         self.sleep_between_polls = 0.05
+        self.panel_firmware: Optional[str] = None
         self.conn = serial.Serial(serial_path, baudrate=baud_rate, timeout=1)
         logger.info(f"Opened serial connection at '{serial_path}'. Mode is binary")
 
@@ -183,10 +184,9 @@ class CaddxController:
             self._send_direct_ack()
         return
 
-    @staticmethod
-    def _process_interface_config_rsp(message: bytearray) -> None:
-        panel_firmware = message[1:5].decode("ascii").rstrip()
-        logger.debug(f"Panel firmware: {panel_firmware}")
+    def _process_interface_config_rsp(self, message: bytearray) -> None:
+        self.panel_firmware = message[1:5].decode("ascii").rstrip()
+        logger.debug(f"Panel firmware: {self.panel_firmware}")
 
         transition_message_flags = (
             int.from_bytes(message[5:7], byteorder="little") & 0xFF_FF
@@ -291,11 +291,12 @@ class CaddxController:
             raise ControllerError(
                 "Required messages not enabled in panel config.  See logs for more information."
             )
+        logger.info(f"Panel with firmware '{self.panel_firmware}' meets interface requirements for this server.")
         # No need to save this state.  Once we have checked interface configuration above, no need to keep it around
         return
 
-    @staticmethod
-    def _process_zone_name_rsp(message: bytearray) -> None:
+    # noinspection PyMethodMayBeStatic
+    def _process_zone_name_rsp(self, message: bytearray) -> None:
         # Note that we request zone names for all zones on first startup.   In the case of this handler
         #  the zone object may not yet exist, and we can instantiate if necessary.   For other zone
         #  messages the zone object should already exist.
@@ -313,8 +314,8 @@ class CaddxController:
             zone.is_updated = True
         return
 
-    @staticmethod
-    def _process_zone_status_rsp(message: bytearray) -> None:
+    # noinspection PyMethodMayBeStatic
+    def _process_zone_status_rsp(self, message: bytearray) -> None:
         if len(message) != model.MessageValidLength[model.MessageType.ZoneNameRsp]:
             logger.error("Invalid zone name message.")
             return
@@ -342,12 +343,12 @@ class CaddxController:
             zone.is_updated = True
         return
 
-    @staticmethod
-    def _process_ack(_message: bytearray) -> None:
+    # noinspection PyMethodMayBeStatic
+    def _process_ack(self, _message: bytearray) -> None:
         logger.debug("Got ACK in response to previous request.")
 
-    @staticmethod
-    def _process_zone_snapshot_rsp(message: bytearray) -> None:
+    # noinspection PyMethodMayBeStatic
+    def _process_zone_snapshot_rsp(self, message: bytearray) -> None:
 
         def _update_zone_attr(z: Zone, mask: int, start_bit: int) -> None:
             z.faulted = bool(get_nth_bit(mask, start_bit))
@@ -366,32 +367,27 @@ class CaddxController:
                     _update_zone_attr(zone, zone_mask, bit)
                 zone_index += 1
 
-    @staticmethod
-    def _process_partition_status_rsp(message: bytearray) -> None:
+    # noinspection PyMethodMayBeStatic
+    def _process_partition_status_rsp(self, message: bytearray) -> None:
         if len(message) != model.MessageValidLength[model.MessageType.PartitionStatusRsp]:
             logger.error("Invalid zone name message.")
             return
         _partition = int(message[1])
         # ToDo: Figure out what data we need to retain.
 
-    @staticmethod
-    def _process_partition_snapshot_rsp(message: bytearray) -> None:
+    def _process_partition_snapshot_rsp(self, message: bytearray) -> None:
         raise NotImplementedError("_process_partition_snapshot_rsp not implemented")
 
-    @staticmethod
-    def _process_system_status_rsp(message: bytearray) -> None:
+    def _process_system_status_rsp(self, message: bytearray) -> None:
         raise NotImplementedError("_process_system_status_rsp not implemented")
 
-    @staticmethod
-    def _process_log_event_ind(message: bytearray) -> None:
+    def _process_log_event_ind(self, message: bytearray) -> None:
         raise NotImplementedError("_process_log_event_ind not implemented")
 
-    @staticmethod
-    def _process_keypad_button_ind(message: bytearray) -> None:
+    def _process_keypad_button_ind(self, message: bytearray) -> None:
         raise NotImplementedError("_process_keypad_button_ind not implemented")
 
-    @staticmethod
-    def _process_zones_snapshot_rsp(message: bytearray) -> None:
+    def _process_zones_snapshot_rsp(self, message: bytearray) -> None:
         raise NotImplementedError("_process_zones_snapshot_rsp not implemented")
 
     def _process_command_queue(self) -> None:
@@ -567,7 +563,7 @@ class CaddxController:
         )
         self._send_request_to_queue(command)
 
-    def send_system_status_req(self) -> None:
+    def _send_system_status_req(self) -> None:
         logger.debug(f"Sending system status request")
         command = model.Command(
             model.MessageType.SystemStatusReq,
@@ -604,5 +600,6 @@ class CaddxController:
 
         # Do System Status Request to find valid partitions.  The response will trigger Partition Status Requests
         #  for valid partitions in its handler.
+        self._send_system_status_req()
 
         # Get all the zone information up to self.number_zones.
