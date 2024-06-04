@@ -96,7 +96,7 @@ class CaddxController:
             self.conn.reset_input_buffer()
             return None
         message_data = bytearray()
-        message_data.extend(start_character)
+        message_data.extend(message_length_byte)
         message_length = int.from_bytes(message_length_byte, "little")
         for i in range(message_length + 2):  # +2 for checksum
             next_byte = self.conn.read(1)
@@ -120,7 +120,8 @@ class CaddxController:
             logger.error("Message data wrong length. Flushing and discarding buffer.")
             self.conn.reset_input_buffer()
             return None
-
+        logger.debug(f"Input message type: {(message_data[1] & 0b00111111):02x}")
+        logger.debug(f"Input message data: {message_data.hex()}")
         # Check the checksum
         offered_checksum = int.from_bytes(message_data[-2:], byteorder="little")
         del message_data[-2:]  # Strip off the checksum
@@ -367,7 +368,7 @@ class CaddxController:
 
     @staticmethod
     def _process_partition_status_rsp(message: bytearray) -> None:
-        if len(message) != model.MessageValidLength[model.MessageType.ZoneNameRsp]:
+        if len(message) != model.MessageValidLength[model.MessageType.PartitionStatusRsp]:
             logger.error("Invalid zone name message.")
             return
         _partition = int(message[1])
@@ -427,12 +428,19 @@ class CaddxController:
                     retries -= 1
                     self._send_direct(command.req_msg_type, command.req_msg_data)
                     continue
-                incoming_message_type = model.MessageType(incoming_message[0])
+                incoming_message_type_byte = incoming_message[0] & 0b001111111
+                try:
+                    incoming_message_type = model.MessageType(incoming_message_type_byte)
+                except ValueError:
+                    logger.error(f"Unknown incoming message type: {incoming_message_type:02x}")
+                    incoming_message_type = None
+                    incoming_message = None
+                    break
 
                 if incoming_message_type not in command.response_handler:
                     # This is probably a transition message.  Process it.
                     logger.debug(
-                        f"Received transition message {incoming_message_type.name}"
+                        f"Received transition message {incoming_message_type.name} "
                         f"while waiting for response to {command.req_msg_type.name} message"
                     )
                     self._process_transition_message(incoming_message)
@@ -442,19 +450,17 @@ class CaddxController:
                     model.MessageType.Failed,
                     model.MessageType.NACK,
                 ):
-                    logger.error(
-                        f"Message of type {command.req_msg_type.name} rejected by panel"
-                    )
+                    logger.error(f"Message of type {command.req_msg_type.name} rejected by panel")
+                    incoming_message_type = None
                     incoming_message = None
                 break
 
-            response_handler = command.response_handler[incoming_message_type]
-            if incoming_message is None and response_handler is not None:
-                logger.error(
-                    f"Command {command.req_msg_type.name} failed due timeout or rejection. Giving up."
-                )
+            if incoming_message_type is None:
+                logger.error(f"Command {command.req_msg_type.name} failed due timeout or rejection. Giving up.")
                 self._command_queue.task_done()
                 continue
+
+            response_handler = command.response_handler[incoming_message_type]
             if response_handler:
                 response_handler(incoming_message)
             logger.debug(
