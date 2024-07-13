@@ -34,7 +34,9 @@ class CaddxController:
         self.read_timeout = 2.0
         self.sleep_between_polls = 0.05
         self.panel_firmware: Optional[str] = None
-        self.conn = serial.Serial(serial_path, baudrate=baud_rate, timeout=1)
+        self.panel_id: Optional[int] = None
+        self.partition_mask: Optional[int] = None
+        self.conn = serial.Serial(serial_path, baudrate=baud_rate, timeout=2)
         logger.info(f"Opened serial connection at '{serial_path}'. Mode is binary")
 
     def control_loop(self, mqtt_client: Optional[MQTTClient]) -> int:
@@ -50,11 +52,27 @@ class CaddxController:
             self.conn = None
             return 1
 
-        self._queue_db_sync()
+        # Clean out any old transition message before we start synchronization
+        self._send_direct_ack()
+        time.sleep(1)
+        while True:
+            received_message = self._read_message(wait=False)
+            if received_message is None:
+                logger.debug("No additional old transition messages waiting.")
+                break
+            logger.debug("Discarding old message before synchronization.")
+
+        logger.info("Starting synchronization.")
+        self._db_sync_start0()
         try:
             while True:
                 # Next statement blocks until all commands and associated responses have been cleared.
                 self._process_command_queue()
+                if not self.panel_synced:
+                    # We do not reach this point until all commands submitted by _db_sync_start() have completed.
+                    self.panel_synced = True
+                    logger.info("Synchronization completed. Setting clock.")
+                    self.send_set_clock_req()
                 time.sleep(self.sleep_between_polls)
                 received_message = self._read_message(wait=False)
                 if received_message is not None:
@@ -87,8 +105,11 @@ class CaddxController:
         if not wait and not self.conn.in_waiting:
             return None
         start_character = self.conn.read(1)
+        if len(start_character) == 0:  # Timeout probably
+            logger.debug(f"Zero length read.  In Waiting: {self.conn.in_waiting}")
+            return None
         if start_character != b"\x7e":
-            logger.error("Invalid or missing start character.")
+            logger.error(f"Invalid or missing start character: {start_character}")
             self.conn.reset_input_buffer()
             return None
         message_length_byte = self.conn.read(1)
@@ -157,28 +178,35 @@ class CaddxController:
         if len(received_message) != model.MessageValidLength[message_type]:
             logger.error("Invalid message length for type. Discarding message.")
             return
-        match message_type:
-            case model.MessageType.InterfaceConfigRsp:
-                self._process_interface_config_rsp(received_message)
-            case model.MessageType.ZoneStatusRsp:
-                self._process_zone_status_rsp(received_message)
-            case model.MessageType.ZonesSnapshotRsp:
-                self._process_zones_snapshot_rsp(received_message)
-            case model.MessageType.PartitionStatusRsp:
-                self._process_partition_status_rsp(received_message)
-            case model.MessageType.PartitionSnapshotRsp:
-                self._process_partition_snapshot_rsp(received_message)
-            case model.MessageType.SystemStatusRsp:
-                self._process_system_status_rsp(received_message)
-            case model.MessageType.LogEventInd:
-                self._process_log_event_ind(received_message)
-            case model.MessageType.KeypadButtonInd:
-                self._process_keypad_button_ind(received_message)
-            case _:  # Message type not supported for broadcast or transition messages
-                logger.error(
-                    f"Received message with indeterminate disposition: {message_type}"
-                )
-                logger.error("This is probably a bug in the server. Please report it.")
+        if self.panel_synced:
+            match message_type:
+                case model.MessageType.InterfaceConfigRsp:
+                    self._process_interface_config_rsp(received_message)
+                case model.MessageType.ZoneStatusRsp:
+                    self._process_zone_status_rsp(received_message)
+                case model.MessageType.ZonesSnapshotRsp:
+                    self._process_zones_snapshot_rsp(received_message)
+                case model.MessageType.PartitionStatusRsp:
+                    self._process_partition_status_rsp(received_message)
+                case model.MessageType.PartitionSnapshotRsp:
+                    self._process_partition_snapshot_rsp(received_message)
+                case model.MessageType.SystemStatusRsp:
+                    self._process_system_status_rsp(received_message)
+                case model.MessageType.LogEventInd:
+                    self._process_log_event_ind(received_message)
+                case model.MessageType.KeypadButtonInd:
+                    self._process_keypad_button_ind(received_message)
+                case (
+                    _
+                ):  # Message type not supported for broadcast or transition messages
+                    logger.error(
+                        f"Received message with indeterminate disposition: {message_type}"
+                    )
+                    logger.error(
+                        "This is probably a bug in the server. Please report it."
+                    )
+        else:
+            logger.debug("Not processing transition message during synchronization.")
 
         if ack_requested:  # OK to ACK even unexpected messages types
             self._send_direct_ack()
@@ -291,7 +319,9 @@ class CaddxController:
             raise ControllerError(
                 "Required messages not enabled in panel config.  See logs for more information."
             )
-        logger.info(f"Panel with firmware '{self.panel_firmware}' meets interface requirements for this server.")
+        logger.info(
+            f"Panel with firmware '{self.panel_firmware}' meets interface requirements for this server."
+        )
         # No need to save this state.  Once we have checked interface configuration above, no need to keep it around
         return
 
@@ -303,44 +333,39 @@ class CaddxController:
         if len(message) != model.MessageValidLength[model.MessageType.ZoneNameRsp]:
             logger.error("Invalid zone name message.")
             return
-        zone_index = int(message[1])
+        zone_index = (
+            int(message[1]) + 1
+        )  # Server zones start from 1.  Panel zones start from 0.
         zone_name = message[2:].decode("utf-8").rstrip()
         zone = Zone.get_zone_by_index(zone_index)
         if zone is None:
-            logger.debug(f"Creating new zone object: {zone_index}) {zone_name}")
+            logger.debug(f"Creating new zone object: Zone {zone_index} - {zone_name}")
             _zone = Zone(zone_index, zone_name)
+        elif self.panel_synced:
+            logger.error(
+                f"Attempt to create new zone after sync has completed. Ignoring, but this is a bug."
+            )
         else:
+            logger.info(f"Zone {zone_index} renamed from {zone.name} to {zone_name}")
             zone.name = zone_name
             zone.is_updated = True
-        return
 
     # noinspection PyMethodMayBeStatic
     def _process_zone_status_rsp(self, message: bytearray) -> None:
-        if len(message) != model.MessageValidLength[model.MessageType.ZoneNameRsp]:
-            logger.error("Invalid zone name message.")
+        if len(message) != model.MessageValidLength[model.MessageType.ZoneStatusRsp]:
+            logger.error("Invalid zone status message.")
             return
-        zone_index = int(message[1])
+        zone_index = (
+            int(message[1]) + 1
+        )  # Server zones start from 1.  Panel zones start from 0.
         zone = Zone.get_zone_by_index(zone_index)
         if zone is None:
-            logger.error(f"Unknown zone index: {zone_index}")
+            logger.error(f"Ignoring zone status. Unknown zone index: {zone_index}")
             return
+        logger.debug(f"Got status for zone {zone_index}.")
         # Skip partition mask at [2:3]
-        zone_type_mask = int.from_bytes(message[3:6], byteorder="little")
-        zone_type_flags = Zone.get_zone_type_flags(zone_type_mask)
-        if zone_type_flags != zone.type_flags:
-            logger.debug(
-                f"Updated zone type flags for zone {zone_index}: {str(zone_type_flags)}"
-            )
-            zone.type_flags = zone_type_flags
-            zone.is_updated = True
-        zone_condition_mask = int.from_bytes(message[6:8], byteorder="little")
-        zone_condition_flags = Zone.get_zone_condition_flags(zone_condition_mask)
-        if zone_condition_flags != zone.condition_flags:
-            logger.debug(
-                f"Updated zone condition flags for zone {zone_index}: {str(zone_condition_flags)}"
-            )
-            zone.condition_flags = zone_condition_flags
-            zone.is_updated = True
+        zone.type_mask = int.from_bytes(message[3:6], byteorder="little")
+        zone.condition_mask = int.from_bytes(message[6:8], byteorder="little")
         return
 
     # noinspection PyMethodMayBeStatic
@@ -350,10 +375,10 @@ class CaddxController:
     # noinspection PyMethodMayBeStatic
     def _process_zone_snapshot_rsp(self, message: bytearray) -> None:
 
-        def _update_zone_attr(z: Zone, mask: int, start_bit: int) -> None:
-            z.faulted = bool(get_nth_bit(mask, start_bit))
-            z.bypassed = bool(get_nth_bit(mask, start_bit + 1))
-            z.trouble = bool(get_nth_bit(mask, start_bit + 2))
+        def _update_zone_attr(z: Zone, _mask: int, _start_bit: int) -> None:
+            # z.faulted = bool(get_nth_bit(mask, start_bit))
+            # z.bypassed = bool(get_nth_bit(mask, start_bit + 1))
+            # z.trouble = bool(get_nth_bit(mask, start_bit + 2))
             z.is_updated = True
 
         if len(message) != model.MessageValidLength[model.MessageType.ZonesSnapshotRsp]:
@@ -369,26 +394,62 @@ class CaddxController:
 
     # noinspection PyMethodMayBeStatic
     def _process_partition_status_rsp(self, message: bytearray) -> None:
-        if len(message) != model.MessageValidLength[model.MessageType.PartitionStatusRsp]:
-            logger.error("Invalid zone name message.")
+        if (
+            len(message)
+            != model.MessageValidLength[model.MessageType.PartitionStatusRsp]
+        ):
+            logger.error("Invalid partition status response message.")
             return
-        _partition = int(message[1])
-        # ToDo: Figure out what data we need to retain.
+        partition = int(message[1])
+        if not self.panel_synced:
+            logger.debug(
+                f"TBD: Creating new object for partition {partition+1} if it does not exist."
+            )
+        else:
+            logger.debug(f"Got status for partition {partition+1}.")
 
-    def _process_partition_snapshot_rsp(self, message: bytearray) -> None:
-        raise NotImplementedError("_process_partition_snapshot_rsp not implemented")
+    # noinspection PyMethodMayBeStatic
+    def _process_partition_snapshot_rsp(self, _message: bytearray) -> None:
+        logger.error("_process_partition_snapshot_rsp not implemented")
 
     def _process_system_status_rsp(self, message: bytearray) -> None:
-        raise NotImplementedError("_process_system_status_rsp not implemented")
+        if len(message) != model.MessageValidLength[model.MessageType.SystemStatusRsp]:
+            logger.error("Invalid system status message.")
+            return
+        if self.panel_id is None:
+            self.panel_id = int(message[1])
+            self.partition_mask = int(message[10])
+        else:
+            new_partition_mask = int(message[10])
+            if new_partition_mask != self.partition_mask:
+                logger.error(
+                    "Partition mask updated since last sync.  Please restart server to synchronise new configuration."
+                )
+        if self.panel_synced:
+            # Todo: Monitor system status for faults.   Partition state is used for alarm status.
+            logger.debug(
+                "Ignoring system status for now.  TBD: Process system status for faults."
+            )
+            return
+        else:
+            for i in range(0, 7):
+                partition_bit = bool(get_nth_bit(self.partition_mask, i))
+                if partition_bit:
+                    valid_partition = i + 1
+                    logger.info(f"Partition {valid_partition} active. Getting status.")
+                    self._send_partition_status_req(valid_partition)
 
-    def _process_log_event_ind(self, message: bytearray) -> None:
-        raise NotImplementedError("_process_log_event_ind not implemented")
+    # noinspection PyMethodMayBeStatic
+    def _process_log_event_ind(self, _message: bytearray) -> None:
+        logger.error("_process_log_event_ind not implemented")
 
-    def _process_keypad_button_ind(self, message: bytearray) -> None:
-        raise NotImplementedError("_process_keypad_button_ind not implemented")
+    # noinspection PyMethodMayBeStatic
+    def _process_keypad_button_ind(self, _message: bytearray) -> None:
+        logger.error("_process_keypad_button_ind not implemented")
 
-    def _process_zones_snapshot_rsp(self, message: bytearray) -> None:
-        raise NotImplementedError("_process_zones_snapshot_rsp not implemented")
+    # noinspection PyMethodMayBeStatic
+    def _process_zones_snapshot_rsp(self, _message: bytearray) -> None:
+        logger.error("_process_zones_snapshot_rsp not implemented")
 
     def _process_command_queue(self) -> None:
         """
@@ -412,8 +473,6 @@ class CaddxController:
             # Processed transition message do not count toward timeout and are processed in-line.
             # Fail immediately if the command is rejected.
             retries = 3
-            incoming_message_type = None
-            incoming_message = None
             self._send_direct(command.req_msg_type, command.req_msg_data)
             while retries > 0:
                 incoming_message = self._read_message(wait=True)
@@ -425,44 +484,48 @@ class CaddxController:
                     self._send_direct(command.req_msg_type, command.req_msg_data)
                     continue
                 incoming_message_type_byte = incoming_message[0] & 0b001111111
+                incoming_message_is_acked = bool(incoming_message[0] & 0b10000000)
                 try:
-                    incoming_message_type = model.MessageType(incoming_message_type_byte)
-                except ValueError:
-                    logger.error(f"Unknown incoming message type: {incoming_message_type:02x}")
-                    incoming_message_type = None
-                    incoming_message = None
-                    break
-
-                if incoming_message_type not in command.response_handler:
-                    # This is probably a transition message.  Process it.
-                    logger.debug(
-                        f"Received transition message {incoming_message_type.name} "
-                        f"while waiting for response to {command.req_msg_type.name} message"
+                    incoming_message_type = model.MessageType(
+                        incoming_message_type_byte
                     )
-                    self._process_transition_message(incoming_message)
+                except ValueError:
+                    logger.critical(
+                        f"Unknown incoming message type: {incoming_message_type_byte:02x}"
+                    )
                     continue
+
+                # Panel did not like our message.   Don't resend.
                 if incoming_message_type in (
                     model.MessageType.Rejected,
                     model.MessageType.Failed,
                     model.MessageType.NACK,
                 ):
-                    logger.error(f"Message of type {command.req_msg_type.name} rejected by panel")
-                    incoming_message_type = None
-                    incoming_message = None
-                break
+                    logger.critical(
+                        f"Message of type {command.req_msg_type.name} rejected by panel"
+                    )
+                    self._command_queue.task_done()
+                    break
 
-            if incoming_message_type is None:
-                logger.error(f"Command {command.req_msg_type.name} failed due timeout or rejection. Giving up.")
-                self._command_queue.task_done()
-                continue
-
-            response_handler = command.response_handler[incoming_message_type]
-            if response_handler:
+                if (
+                    incoming_message_type not in command.response_handler
+                    or incoming_message_is_acked
+                ):
+                    # This is probably a transition message.  Process it.
+                    logger.debug(
+                        f"Received transition message {incoming_message_type.name} "
+                        f"while waiting for response to {command.req_msg_type.name} message. "
+                        "Processing as transition message."
+                    )
+                    self._process_transition_message(incoming_message)
+                    continue
+                response_handler = command.response_handler[incoming_message_type]
                 response_handler(incoming_message)
-            logger.debug(
-                f"Command {command.req_msg_type.name} completed successfully with {incoming_message_type.name}"
-            )
-            self._command_queue.task_done()
+                logger.debug(
+                    f"Command {command.req_msg_type.name} completed successfully with {incoming_message_type.name}"
+                )
+                self._command_queue.task_done()
+                break
         return
 
     def _send_request_to_queue(self, command: model.Command) -> None:
@@ -508,6 +571,7 @@ class CaddxController:
         return
 
     def _send_direct_ack(self):
+        time.sleep(0.25)
         self._send_direct(model.MessageType.ACK, None)
 
     def _send_direct_nack(self):
@@ -524,31 +588,44 @@ class CaddxController:
 
     def _send_zone_name_req(self, zone: int) -> None:
         logger.debug(f"Sending zone name request for zone {zone}")
-        zone &= 0xFF
+        zone_index = (zone - 1) & 0xFF
         command = model.Command(
             model.MessageType.ZoneNameReq,
-            bytearray(zone.to_bytes(1, byteorder="big")),
-            {model.MessageType.ZoneNameReq: self._process_zone_name_rsp},
+            bytearray(zone_index.to_bytes(1, byteorder="big")),
+            {model.MessageType.ZoneNameRsp: self._process_zone_name_rsp},
         )
         self._send_request_to_queue(command)
 
     def _send_zone_status_req(self, zone: int) -> None:
         logger.debug(f"Sending zone status request for zone {zone}")
-        zone &= 0xFF
+        zone_index = (zone - 1) & 0xFF
         command = model.Command(
             model.MessageType.ZoneStatusReq,
-            bytearray(zone.to_bytes(1, byteorder="big")),
+            bytearray(zone_index.to_bytes(1, byteorder="big")),
             {model.MessageType.ZoneStatusRsp: self._process_zone_status_rsp},
         )
         self._send_request_to_queue(command)
 
-    def _send_zone_snapshot_req(self, partition: int) -> None:
-        logger.debug(f"Sending zone snapshot request for partition {partition}")
-        partition &= 0xFF
+    def _send_zone_snapshot_req(self, zone_offset: int) -> None:
+        zone_offset &= 0xFF
+        logger.debug(
+            f"Sending zone snapshot request for zone offset {zone_offset}. Zone base: {(zone_offset*16)+1}."
+        )
         command = model.Command(
             model.MessageType.ZonesSnapshotReq,
-            bytearray(partition.to_bytes(1, byteorder="big")),
+            bytearray(zone_offset.to_bytes(1, byteorder="big")),
             {model.MessageType.ZonesSnapshotRsp: self._process_zone_snapshot_rsp},
+        )
+        self._send_request_to_queue(command)
+
+    def _send_partition_status_req(self, partition: int):
+        logger.debug(f"Sending partition {partition} status request.")
+        assert 1 <= partition <= 7
+        partition = partition - 1
+        command = model.Command(
+            model.MessageType.PartitionStatusReq,
+            bytearray(partition.to_bytes(1, byteorder="little")),
+            {model.MessageType.PartitionStatusRsp: self._process_partition_status_rsp},
         )
         self._send_request_to_queue(command)
 
@@ -576,7 +653,7 @@ class CaddxController:
         time_stamp = time.localtime(time.time())
         message = bytearray()
         message.extend((time_stamp.tm_year - 2000).to_bytes(1, byteorder="little"))
-        message.extend(time_stamp.tm_month.to_bytes(1, byteorder="little"))
+        message.extend(time_stamp.tm_mon.to_bytes(1, byteorder="little"))
         message.extend(time_stamp.tm_mday.to_bytes(1, byteorder="little"))
         message.extend(time_stamp.tm_hour.to_bytes(1, byteorder="little"))
         message.extend(time_stamp.tm_min.to_bytes(1, byteorder="little"))
@@ -592,8 +669,9 @@ class CaddxController:
         )
         self._send_request_to_queue(command)
 
-    def _queue_db_sync(self) -> None:
+    def _db_sync_start0(self) -> None:
         self.panel_synced = False
+
         # Do Interface Configuration Request to ensure that panel interface is configured correctly.
         #  May throw exception if not.  Handled in control loop.
         self._send_interface_configuration_req()
@@ -603,3 +681,6 @@ class CaddxController:
         self._send_system_status_req()
 
         # Get all the zone information up to self.number_zones.
+        for zone_number in range(1, (self.number_zones + 1)):
+            self._send_zone_name_req(zone_number)
+            self._send_zone_status_req(zone_number)
