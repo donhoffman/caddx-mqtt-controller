@@ -3,7 +3,7 @@ import json
 import logging
 import paho.mqtt.client as mqtt
 
-# from zones import zones_by_index
+from partition import Partition
 
 logger = logging.getLogger("app.mqtt_client")
 
@@ -17,7 +17,8 @@ class MQTTClient(object):
         user: str,
         password: str,
         topic_root: str,
-        panel_id: str,
+        panel_unique_id: str,
+        panel_name: str,
         _tls: bool = False,
         _tls_insecure: bool = False,
         version: str = "Unknown",
@@ -25,7 +26,14 @@ class MQTTClient(object):
     ):
         self.software_version = version
         self.topic_root = topic_root
-        self.panel_id = panel_id
+        self.panel_unique_id = panel_unique_id
+        self.panel_name = panel_name
+        self.topic_prefix = (
+            f"{self.topic_root}/alarm_control_panel/{self.panel_unique_id}"
+        )
+        self.command_topic_path = f"{self.topic_prefix}/+/set"
+        self.state_topic_path = f"{self.topic_prefix}/+/state"
+        self.availability_topic = f"{self.topic_prefix}/availability"
         self.caddx_ctrl = caddx_ctrl
         self.timeout_seconds = timeout_seconds
         self.client = mqtt.Client()
@@ -48,9 +56,17 @@ class MQTTClient(object):
     def on_connect(self, client, _userdata, _flags, rc) -> None:
         if rc == 0:
             self.connected = True
-            logger.debug("Connected to MQTT server.")
+            logger.info("Connected to MQTT server.")
 
-            # Mark device as offline until data is synced and published
+            # Publish our initial availability to HA MQTT integration
+            self.publish_offline()
+            self.client.will_set(self.availability_topic, "offline", retain=True)
+
+            # Listen for commands
+            self.client.subscribe(self.command_topic_path)
+
+            # Subscribe to HA MQTT integration status to detect HA restarts
+            self.client.subscribe(f"{self.topic_root}/status")
 
         else:
             self.connected = False
@@ -62,3 +78,43 @@ class MQTTClient(object):
 
     def on_disconnect(self, _client, _userdata, _rc) -> None:
         self.connected = False
+
+    def publish_online(self) -> None:
+        self.client.publish(
+            self.availability_topic, payload="online", qos=1, retain=True
+        )
+
+    def publish_offline(self) -> None:
+        self.client.publish(
+            self.availability_topic, payload="offline", qos=1, retain=True
+        )
+
+    def publish_partition_config(self, partition_id: int) -> None:
+        partition = Partition.get_partition_by_index(partition_id)
+        if partition is None:
+            logger.error(f"Partition {partition_id} does not exist.")
+            return
+        partition_node = f"{self.topic_prefix}/partition_{partition_id}"
+        partition_config = {
+            "name": None,
+            "device_class": "alarm_control_panel",
+            "unique_id": f"{self.panel_unique_id}_{partition_node}",
+            "device": {
+                "name": self.panel_name,
+                "identifiers": [f"{self.panel_unique_id}_{partition_node}"],
+                "manufacturer": "Caddx",
+                "model": "NX8E",
+            },
+            "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
+            "supported_features": ["arm_home", "arm_away"],
+            "optimistic": False,
+            "~": f"{self.topic_prefix}/{partition_node}",
+            "availability_topic": self.availability_topic,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "state_topic": "~/state",
+            "command_topic": "~/set",
+            "json_attributes_topic": "~/attributes",
+        }
+        config_topic = f"{self.topic_prefix}/{partition_node}/config"
+        self.client.publish(config_topic, json.dumps(partition_config))

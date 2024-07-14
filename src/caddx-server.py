@@ -8,6 +8,7 @@ import argparse
 import logging
 
 from caddx_controller import CaddxController
+from mqtt_client import MQTTClient
 
 VERSION: Final = "1.0.0"
 DEFAULT_MQTT_PORT: Final = 1883
@@ -44,6 +45,12 @@ def main() -> int:
         "--max-zones", type=int, help="Max zones", default=os.getenv("MAX_ZONES", 8)
     )
     parser.add_argument(
+        "--mqtt-host",
+        type=str,
+        help="MQTT host",
+        default=os.getenv("MQTT_HOST", "127.0.0.1"),
+    )
+    parser.add_argument(
         "--mqtt-port",
         type=int,
         help="MQTT port number",
@@ -68,11 +75,18 @@ def main() -> int:
         default=os.getenv("TOPIC_ROOT", "homeassistant"),
     )
     parser.add_argument(
-        "--entity-root",
+        "--panel-unique-id",
         type=str,
-        help="Root entity",
-        default=os.getenv("ENTITY_ROOT", None),
+        help="Unique ID for panel device",
+        default=os.getenv("PANEL_UNIQUE_ID", "caddx_panel"),
     )
+    parser.add_argument(
+        "--panel-name",
+        type=str,
+        help="Panel Friendly Name",
+        default=os.getenv("PANEL_NAME", "Caddx Alarm Panel"),
+    )
+
     args = parser.parse_args()
 
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
@@ -80,11 +94,6 @@ def main() -> int:
     logger.info("Starting Caddx MQTT Server")
 
     # Check for required arguments
-    if args.entity_root is None:
-        logging.error(
-            "Argument --entity-root or environment variable ENTITY_ROOT is required"
-        )
-        return 1
     if args.serial is None:
         logging.error("Argument --serial or environment variable SERIAL is required")
         return 1
@@ -96,10 +105,25 @@ def main() -> int:
         logger.error(f"Failed to initialize Caddx MQTT Controller: {e}")
         return 1
 
-    # ToDo: Initialize the MQTT client
+    # Initialize the MQTT client
+    try:
+        mqtt = MQTTClient(
+            controller,
+            args.mqtt_host,
+            args.mqtt_port,
+            args.mqtt_user,
+            args.mqtt_password,
+            args.mqtt_topic_root,
+            args.panel_unique_id,
+            args.panel_name,
+            version=VERSION,
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize Caddx MQTT Client: {e}")
+        return 1
 
     # Run the controller loop
-    code = controller.control_loop(None)
+    code = controller.control_loop(mqtt)
     return code
 
 
