@@ -1,4 +1,3 @@
-from typing import List, Optional
 import json
 import logging
 import paho.mqtt.client as mqtt
@@ -53,7 +52,7 @@ class MQTTClient(object):
             logger.debug(f"Failed to connect to MQTT broker at {host}: {str(e)}")
             raise e
 
-    def on_connect(self, client, _userdata, _flags, rc) -> None:
+    def on_connect(self, _client, _userdata, _flags, rc) -> None:
         if rc == 0:
             self.connected = True
             logger.info("Connected to MQTT server.")
@@ -72,7 +71,7 @@ class MQTTClient(object):
             self.connected = False
             logger.debug(f"Failed to connect to MQTT server result code {rc}.")
 
-    def on_message(self, _client, _userdata, msg) -> None:
+    def on_message(self, _client, _userdata, _msg) -> None:
         if not self.connected:
             return
 

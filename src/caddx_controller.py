@@ -46,12 +46,6 @@ class CaddxController:
         self.conn.reset_input_buffer()
         rc = 0
 
-        if mqtt_client and not mqtt_client.connected:
-            logger.error("Run loop started with no MQTT connection.")
-            self.conn.close()
-            self.conn = None
-            return 1
-
         # Clean out any old transition message before we start synchronization
         self._send_direct_ack()
         time.sleep(1)
@@ -76,17 +70,14 @@ class CaddxController:
                 time.sleep(self.sleep_between_polls)
                 received_message = self._read_message(wait=False)
                 if received_message is not None:
-                    logger.debug(
-                        f"Received transition or broadcast message: {received_message}"
-                    )
                     self._process_transition_message(received_message)
         except KeyboardInterrupt:
             logger.debug("Received keyboard interrupt. Normal stop")
         except StopThread:
             logger.debug("Normal stop.")
-        except Exception as e:
-            logger.error(f"Caddx controller received exception: {e}")
-            rc = 1
+        # except Exception as e:
+        #     logger.error(f"Caddx controller received exception: {e}")
+        #     rc = 1
         finally:
             self.conn.close()
             self.conn = None
@@ -362,7 +353,7 @@ class CaddxController:
         if zone is None:
             logger.error(f"Ignoring zone status. Unknown zone index: {zone_index}")
             return
-        logger.debug(f"Got status for zone {zone_index}.")
+        logger.debug(f"Got status for zone {zone_index} - {zone.name}.")
         # Skip partition mask at [2:3]
         zone.type_mask = int.from_bytes(message[3:6], byteorder="little")
         zone.condition_mask = int.from_bytes(message[6:8], byteorder="little")
@@ -578,7 +569,7 @@ class CaddxController:
         self._send_direct(model.MessageType.NACK, None)
 
     def _send_interface_configuration_req(self) -> None:
-        logger.debug(f"Sending interface configuration request")
+        logger.debug(f"Queuing interface configuration request")
         command = model.Command(
             model.MessageType.InterfaceConfigReq,
             None,
@@ -587,7 +578,7 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_zone_name_req(self, zone: int) -> None:
-        logger.debug(f"Sending zone name request for zone {zone}")
+        logger.debug(f"Queuing zone name request for zone {zone}")
         zone_index = (zone - 1) & 0xFF
         command = model.Command(
             model.MessageType.ZoneNameReq,
@@ -597,7 +588,7 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_zone_status_req(self, zone: int) -> None:
-        logger.debug(f"Sending zone status request for zone {zone}")
+        logger.debug(f"Queuing zone status request for zone {zone}")
         zone_index = (zone - 1) & 0xFF
         command = model.Command(
             model.MessageType.ZoneStatusReq,
@@ -609,7 +600,7 @@ class CaddxController:
     def _send_zone_snapshot_req(self, zone_offset: int) -> None:
         zone_offset &= 0xFF
         logger.debug(
-            f"Sending zone snapshot request for zone offset {zone_offset}. Zone base: {(zone_offset*16)+1}."
+            f"Queuing zone snapshot request for zone offset {zone_offset}. Zone base: {(zone_offset*16)+1}."
         )
         command = model.Command(
             model.MessageType.ZonesSnapshotReq,
@@ -619,7 +610,7 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_partition_status_req(self, partition: int):
-        logger.debug(f"Sending partition {partition} status request.")
+        logger.debug(f"Queuing partition {partition} status request.")
         assert 1 <= partition <= 7
         partition = partition - 1
         command = model.Command(
@@ -630,7 +621,7 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_partition_snapshot_req(self) -> None:
-        logger.debug(f"Sending partition snapshot request")
+        logger.debug(f"Queuing partition snapshot request")
         command = model.Command(
             model.MessageType.PartitionSnapshotReq,
             None,
@@ -641,7 +632,7 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_system_status_req(self) -> None:
-        logger.debug(f"Sending system status request")
+        logger.debug(f"Queuing system status request")
         command = model.Command(
             model.MessageType.SystemStatusReq,
             None,
@@ -661,7 +652,7 @@ class CaddxController:
         corrected_wday = [2, 3, 4, 5, 6, 7, 1][time_stamp.tm_wday]
         message.extend(corrected_wday.to_bytes(1, byteorder="little"))
         assert len(message) == 6
-        # Todo: Verify responses to Set Clock/Calendar.  Assume ACK for now.
+        logger.debug(f"Queuing set clock/date request")
         command = model.Command(
             model.MessageType.SetClockCalendar,
             message,
