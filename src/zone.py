@@ -26,9 +26,6 @@ class Zone(object):
         self.is_updated: bool = True
         assert index not in self.zones_by_index, "Non-unique zone index"
         self.__class__.zones_by_index[index] = self
-        assert (
-            self.unique_name not in self.zones_by_unique_name
-        ), "Non-unique unique zone name"
         self.__class__.zones_by_unique_name[self.unique_name] = self
 
     @property

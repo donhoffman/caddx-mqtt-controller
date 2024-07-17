@@ -7,6 +7,7 @@ import time
 from mqtt_client import MQTTClient
 import model
 from zone import Zone
+from partition import Partition
 
 logger = logging.getLogger("app.caddx_controller")
 
@@ -48,9 +49,8 @@ class CaddxController:
 
         # Clean out any old transition message before we start synchronization
         self._send_direct_ack()
-        time.sleep(1)
         while True:
-            received_message = self._read_message(wait=False)
+            received_message = self._read_message(wait=True)
             if received_message is None:
                 logger.debug("No additional old transition messages waiting.")
                 break
@@ -65,8 +65,13 @@ class CaddxController:
                 if not self.panel_synced:
                     # We do not reach this point until all commands submitted by _db_sync_start() have completed.
                     self.panel_synced = True
-                    logger.info("Synchronization completed. Setting clock.")
+                    logger.info(
+                        "Synchronization completed. Setting clock and sending configs to HA."
+                    )
                     self.send_set_clock_req()
+                    mqtt_client.publish_configs()
+                    mqtt_client.publish_online()
+                    mqtt_client.publish_partition_states()
                 time.sleep(self.sleep_between_polls)
                 received_message = self._read_message(wait=False)
                 if received_message is not None:
@@ -160,9 +165,8 @@ class CaddxController:
         return (sum2 << 8) | sum1
 
     def _process_transition_message(self, received_message: bytearray) -> None:
-        message_type = received_message[0]
-        ack_requested = bool(message_type & 0x80)
-        message_type &= ~0xC0
+        message_type = received_message[0] & ~0xC0
+        ack_requested = bool(received_message[0] & 0x80)
         if message_type not in model.MessageValidLength:
             logger.error(f"Invalid message type: {message_type}")
             return
@@ -175,30 +179,15 @@ class CaddxController:
                     self._process_interface_config_rsp(received_message)
                 case model.MessageType.ZoneStatusRsp:
                     self._process_zone_status_rsp(received_message)
-                case model.MessageType.ZonesSnapshotRsp:
-                    self._process_zones_snapshot_rsp(received_message)
                 case model.MessageType.PartitionStatusRsp:
                     self._process_partition_status_rsp(received_message)
-                case model.MessageType.PartitionSnapshotRsp:
-                    self._process_partition_snapshot_rsp(received_message)
                 case model.MessageType.SystemStatusRsp:
                     self._process_system_status_rsp(received_message)
-                case model.MessageType.LogEventInd:
-                    self._process_log_event_ind(received_message)
-                case model.MessageType.KeypadButtonInd:
-                    self._process_keypad_button_ind(received_message)
-                case (
-                    _
-                ):  # Message type not supported for broadcast or transition messages
-                    logger.error(
-                        f"Received message with indeterminate disposition: {message_type}"
-                    )
-                    logger.error(
-                        "This is probably a bug in the server. Please report it."
-                    )
+                case _:
+                    # Message type not implemented.  ACK if requested though.
+                    pass
         else:
             logger.debug("Not processing transition message during synchronization.")
-
         if ack_requested:  # OK to ACK even unexpected messages types
             self._send_direct_ack()
         return
@@ -391,17 +380,31 @@ class CaddxController:
         ):
             logger.error("Invalid partition status response message.")
             return
-        partition = int(message[1])
+        partition_id = int(message[1]) + 1
+        partition: Optional[Partition]
         if not self.panel_synced:
-            logger.debug(
-                f"TBD: Creating new object for partition {partition+1} if it does not exist."
-            )
+            logger.debug(f"Creating new object for partition {partition_id}.")
+            partition = Partition(partition_id)
         else:
-            logger.debug(f"Got status for partition {partition+1}.")
+            logger.debug(f"Got status for existing partition {partition_id}.")
+            partition = Partition.get_partition_by_index(partition_id)
+            if partition is None:
+                logger.error(
+                    f"Got partition status for unknown partition {partition_id}"
+                )
+                return
 
-    # noinspection PyMethodMayBeStatic
-    def _process_partition_snapshot_rsp(self, _message: bytearray) -> None:
-        logger.error("_process_partition_snapshot_rsp not implemented")
+        # Save condition flags
+        condition_flags_low = (
+            int.from_bytes(message[2:6], byteorder="little") & 0xFF_FF_FF_FF
+        )
+        condition_flags_high = (
+            int.from_bytes(message[7:9], byteorder="little") & 0xFF_FF
+        ) << 32
+        partition.condition_flags = condition_flags_low | condition_flags_high
+
+        partition.log_condition(logger.debug)
+        logger.debug(f"Partition {partition.index} state is {partition.state.name}")
 
     def _process_system_status_rsp(self, message: bytearray) -> None:
         if len(message) != model.MessageValidLength[model.MessageType.SystemStatusRsp]:
@@ -418,29 +421,16 @@ class CaddxController:
                 )
         if self.panel_synced:
             # Todo: Monitor system status for faults.   Partition state is used for alarm status.
-            logger.debug(
-                "Ignoring system status for now.  TBD: Process system status for faults."
-            )
             return
         else:
             for i in range(0, 7):
                 partition_bit = bool(get_nth_bit(self.partition_mask, i))
                 if partition_bit:
                     valid_partition = i + 1
-                    logger.info(f"Partition {valid_partition} active. Getting status.")
+                    logger.info(
+                        f"Partition {valid_partition} active. Queueing status request."
+                    )
                     self._send_partition_status_req(valid_partition)
-
-    # noinspection PyMethodMayBeStatic
-    def _process_log_event_ind(self, _message: bytearray) -> None:
-        logger.error("_process_log_event_ind not implemented")
-
-    # noinspection PyMethodMayBeStatic
-    def _process_keypad_button_ind(self, _message: bytearray) -> None:
-        logger.error("_process_keypad_button_ind not implemented")
-
-    # noinspection PyMethodMayBeStatic
-    def _process_zones_snapshot_rsp(self, _message: bytearray) -> None:
-        logger.error("_process_zones_snapshot_rsp not implemented")
 
     def _process_command_queue(self) -> None:
         """

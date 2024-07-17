@@ -177,14 +177,6 @@ class RequestCommandFlags(IntEnum):
     ZoneBypassToggle = 0b_10000000_00000000_00000000_00000000
 
 
-class ResultPartitionStatus(NamedTuple):
-    partition: int  # Partition number
-    partition_condition_flags: int  # 6 byte bitmask. See PartitionConditionFlags
-    last_user_number: (
-        int  # Last user number that caused a change in the partition status
-    )
-
-
 class PartitionConditionFlags(IntEnum):
     # User code required to bypass zones.
     BypassCodeRequired = 0b_00000000_00000000_00000000_00000000_00000000_00000001
@@ -276,13 +268,6 @@ class PartitionConditionFlags(IntEnum):
     KeyswitchArmed = 0b_01000000_00000000_00000000_00000000_00000000_00000000
     # Delay trip in progress.
     DelayTripInProgress = 0b_10000000_00000000_00000000_00000000_00000000_00000000
-
-
-class ResultZoneStatus(NamedTuple):
-    zone_number: int
-    zone_type_flags: int  # 3-byte bitfield. See ZoneTypeFlags.
-    zone_status_flags: int  # 2-byte bitfield. See ZoneStatusFlags.
-    partition: int  # 1-byte bitfield.
 
 
 class ZoneTypeFlags(IntEnum):

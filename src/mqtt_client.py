@@ -88,26 +88,26 @@ class MQTTClient(object):
             self.availability_topic, payload="offline", qos=1, retain=True
         )
 
-    def publish_partition_config(self, partition_id: int) -> None:
-        partition = Partition.get_partition_by_index(partition_id)
-        if partition is None:
-            logger.error(f"Partition {partition_id} does not exist.")
-            return
-        partition_node = f"{self.topic_prefix}/partition_{partition_id}"
+    def publish_configs(self) -> None:
+        partitions = Partition.get_all_partitions()
+        for partition in partitions:
+            self.publish_partition_config(partition)
+
+    def publish_partition_config(self, partition: Partition) -> None:
         partition_config = {
             "name": None,
             "device_class": "alarm_control_panel",
-            "unique_id": f"{self.panel_unique_id}_{partition_node}",
+            "unique_id": f"{self.panel_unique_id}_{partition.unique_name}",
             "device": {
-                "name": self.panel_name,
-                "identifiers": [f"{self.panel_unique_id}_{partition_node}"],
+                "name": f"{self.panel_name} Partition {partition.index}",
+                "identifiers": [f"{self.panel_unique_id}_{partition.unique_name}"],
                 "manufacturer": "Caddx",
                 "model": "NX8E",
             },
             "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
             "supported_features": ["arm_home", "arm_away"],
             "optimistic": False,
-            "~": f"{self.topic_prefix}/{partition_node}",
+            "~": f"{self.topic_prefix}/{partition.unique_name}",
             "availability_topic": self.availability_topic,
             "payload_available": "online",
             "payload_not_available": "offline",
@@ -115,5 +115,16 @@ class MQTTClient(object):
             "command_topic": "~/set",
             "json_attributes_topic": "~/attributes",
         }
-        config_topic = f"{self.topic_prefix}/{partition_node}/config"
+        config_topic = f"{self.topic_prefix}/{partition.unique_name}/config"
         self.client.publish(config_topic, json.dumps(partition_config))
+
+    def publish_partition_states(self) -> None:
+        partitions = Partition.get_all_partitions()
+        for partition in partitions:
+            self.publish_partition_state(partition)
+
+    def publish_partition_state(self, partition: Partition) -> None:
+        state = partition.state
+        if state is not None:
+            state_topic = f"{self.topic_prefix}/{partition.unique_name}/state"
+            self.client.publish(state_topic, state.value[0])
