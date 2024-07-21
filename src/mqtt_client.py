@@ -1,3 +1,4 @@
+from typing import List
 import json
 import logging
 import paho.mqtt.client as mqtt
@@ -71,9 +72,48 @@ class MQTTClient(object):
             self.connected = False
             logger.debug(f"Failed to connect to MQTT server result code {rc}.")
 
-    def on_message(self, _client, _userdata, _msg) -> None:
+    def on_message(self, _client, _userdata, msg) -> None:
         if not self.connected:
             return
+        # Check for MQTT integration availability message
+        topic_parts: List[str] = msg.topic.split("/")
+        if (
+            len(topic_parts) == 2
+            and topic_parts[0] == self.topic_root
+            and topic_parts[1] == "status"
+        ):
+            if msg.payload == b"online":
+                logger.info("MQTT integration restarted. Re-synchronizing data.")
+                self.publish_configs()
+                self.publish_online()
+                self.publish_partition_states()
+            return
+        # Check for command.
+        if (
+            (len(topic_parts) == 5)
+            and (topic_parts[0] == self.topic_root)
+            and (topic_parts[1] == "alarm_control_panel")
+            and (topic_parts[2] == self.panel_unique_id)
+            and (topic_parts[3].startswith("partition_"))
+            and (topic_parts[4] == "set")
+        ):
+            partition_index = int(topic_parts[3].split("_")[1])
+            partition = Partition.get_partition_by_index(partition_index)
+            if partition is None:
+                logger.error(
+                    f"Got command for partition {partition_index} that is not configured."
+                )
+                return
+            command = msg.payload.decode("utf-8")
+            match command:
+                case "ARM_AWAY":
+                    self.caddx_ctrl.send_arm_away(partition)
+                case "ARM_HOME":
+                    self.caddx_ctrl.send_arm_home(partition)
+                case "DISARM":
+                    self.caddx_ctrl.send_disarm(partition)
+                case _:
+                    logger.error(f"Unknown command: {command}")
 
     def on_disconnect(self, _client, _userdata, _rc) -> None:
         self.connected = False
@@ -107,6 +147,9 @@ class MQTTClient(object):
             "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
             "supported_features": ["arm_home", "arm_away"],
             "optimistic": False,
+            "code_arm_required": False,
+            "code_disarm_required": False,
+            "code_trigger_required": False,
             "~": f"{self.topic_prefix}/{partition.unique_name}",
             "availability_topic": self.availability_topic,
             "payload_available": "online",

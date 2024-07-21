@@ -86,7 +86,18 @@ def main() -> int:
         help="Panel Friendly Name",
         default=os.getenv("PANEL_NAME", "Caddx Alarm Panel"),
     )
-
+    parser.add_argument(
+        "--code",
+        type=str,
+        help="Default code to use for arming and disarming",
+        default=os.getenv("CODE", None),
+    )
+    parser.add_argument(
+        "--user",
+        type=str,
+        help="Default user number to use for arming and disarming",
+        default=os.getenv("CODE", "1"),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
@@ -100,7 +111,13 @@ def main() -> int:
 
     # Initialize the controller
     try:
-        controller = CaddxController(args.serial, args.baud, args.max_zones)
+        controller = CaddxController(
+            args.serial,
+            args.baud,
+            args.max_zones,
+            default_code=args.code,
+            default_user=args.user,
+        )
     except Exception as e:
         logger.error(f"Failed to initialize Caddx MQTT Controller: {e}")
         return 1

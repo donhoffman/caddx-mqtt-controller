@@ -12,8 +12,21 @@ from partition import Partition
 logger = logging.getLogger("app.caddx_controller")
 
 
-def get_nth_bit(num, n):
+def get_nth_bit(num: int, n: int) -> int:
     return (num >> n) & 1
+
+
+def pin_to_bytearray(pin: str) -> bytearray:
+    if len(pin) not in [4, 6]:
+        raise ValueError("PIN must be 4 or 6 characters long")
+
+    pin_array = bytearray(3)
+
+    for i in range(0, len(pin), 2):
+        byte = (int(pin[i]) << 4) | int(pin[i + 1])
+        pin_array[i // 2] = byte
+
+    return pin_array
 
 
 class StopThread(Exception):
@@ -25,9 +38,18 @@ class ControllerError(Exception):
 
 
 class CaddxController:
-    def __init__(self, serial_path: str, baud_rate: int, number_zones: int) -> None:
+    def __init__(
+        self,
+        serial_path: str,
+        baud_rate: int,
+        number_zones: int,
+        default_code: str = None,
+        default_user: str = None,
+    ) -> None:
         self.serial_path = serial_path
         self.number_zones = number_zones
+        self.default_code = default_code
+        self.default_user = default_user
         self.mqtt_client: Optional[MQTTClient] = None
         self._command_queue = None
         self.conn = None
@@ -394,7 +416,6 @@ class CaddxController:
                 )
                 return
 
-        # Save condition flags
         condition_flags_low = (
             int.from_bytes(message[2:6], byteorder="little") & 0xFF_FF_FF_FF
         )
@@ -402,9 +423,10 @@ class CaddxController:
             int.from_bytes(message[7:9], byteorder="little") & 0xFF_FF
         ) << 32
         partition.condition_flags = condition_flags_low | condition_flags_high
-
         partition.log_condition(logger.debug)
         logger.debug(f"Partition {partition.index} state is {partition.state.name}")
+        if self.panel_synced:
+            self.mqtt_client.publish_partition_state(partition)
 
     def _process_system_status_rsp(self, message: bytearray) -> None:
         if len(message) != model.MessageValidLength[model.MessageType.SystemStatusRsp]:
@@ -454,7 +476,9 @@ class CaddxController:
             # Processed transition message do not count toward timeout and are processed in-line.
             # Fail immediately if the command is rejected.
             retries = 3
-            self._send_direct(command.req_msg_type, command.req_msg_data)
+            self._send_direct(
+                command.req_msg_type, command.req_msg_data, command.request_ack
+            )
             while retries > 0:
                 incoming_message = self._read_message(wait=True)
                 if incoming_message is None:  # Timeout
@@ -462,7 +486,9 @@ class CaddxController:
                         f"Timeout waiting for response to {command.req_msg_type.name} message. Retrying."
                     )
                     retries -= 1
-                    self._send_direct(command.req_msg_type, command.req_msg_data)
+                    self._send_direct(
+                        command.req_msg_type, command.req_msg_data, command.request_ack
+                    )
                     continue
                 incoming_message_type_byte = incoming_message[0] & 0b001111111
                 incoming_message_is_acked = bool(incoming_message[0] & 0b10000000)
@@ -514,7 +540,10 @@ class CaddxController:
         return
 
     def _send_direct(
-        self, message_type: model.MessageType, message_data: Optional[bytearray]
+        self,
+        message_type: model.MessageType,
+        message_data: Optional[bytearray],
+        request_ack: bool = False,
     ) -> None:
         message_length = 1 + len(message_data) if message_data else 1
         if message_type not in model.MessageValidLength:
@@ -526,7 +555,8 @@ class CaddxController:
                 f"Expected {model.MessageValidLength[message_type]}, got {message_length}."
             )
             return
-
+        if request_ack:
+            message_type = message_type | 0x80
         message = bytearray()
         message.append(message_length & 0xFF)
         message.append(message_type & 0xFF)
@@ -572,7 +602,7 @@ class CaddxController:
         zone_index = (zone - 1) & 0xFF
         command = model.Command(
             model.MessageType.ZoneNameReq,
-            bytearray(zone_index.to_bytes(1, byteorder="big")),
+            bytearray(zone_index.to_bytes(1, byteorder="little")),
             {model.MessageType.ZoneNameRsp: self._process_zone_name_rsp},
         )
         self._send_request_to_queue(command)
@@ -582,20 +612,8 @@ class CaddxController:
         zone_index = (zone - 1) & 0xFF
         command = model.Command(
             model.MessageType.ZoneStatusReq,
-            bytearray(zone_index.to_bytes(1, byteorder="big")),
+            bytearray(zone_index.to_bytes(1, byteorder="little")),
             {model.MessageType.ZoneStatusRsp: self._process_zone_status_rsp},
-        )
-        self._send_request_to_queue(command)
-
-    def _send_zone_snapshot_req(self, zone_offset: int) -> None:
-        zone_offset &= 0xFF
-        logger.debug(
-            f"Queuing zone snapshot request for zone offset {zone_offset}. Zone base: {(zone_offset*16)+1}."
-        )
-        command = model.Command(
-            model.MessageType.ZonesSnapshotReq,
-            bytearray(zone_offset.to_bytes(1, byteorder="big")),
-            {model.MessageType.ZonesSnapshotRsp: self._process_zone_snapshot_rsp},
         )
         self._send_request_to_queue(command)
 
@@ -607,17 +625,6 @@ class CaddxController:
             model.MessageType.PartitionStatusReq,
             bytearray(partition.to_bytes(1, byteorder="little")),
             {model.MessageType.PartitionStatusRsp: self._process_partition_status_rsp},
-        )
-        self._send_request_to_queue(command)
-
-    def _send_partition_snapshot_req(self) -> None:
-        logger.debug(f"Queuing partition snapshot request")
-        command = model.Command(
-            model.MessageType.PartitionSnapshotReq,
-            None,
-            {
-                model.MessageType.PartitionSnapshotRsp: self._process_partition_snapshot_rsp
-            },
         )
         self._send_request_to_queue(command)
 
@@ -649,6 +656,95 @@ class CaddxController:
             {model.MessageType.ACK: self._process_ack},
         )
         self._send_request_to_queue(command)
+
+    def send_primary_keypad_function_wo_pin(
+        self, partition: Partition, function: model.PrimaryKeypadFunctions
+    ) -> None:
+        message = bytearray()
+        message.append(function.value)
+        partition_mask = 1 << (partition.index - 1)
+        message.append(partition_mask)
+        message.append(int(self.default_user))  # Default to User 1 for now.
+        logger.debug(
+            "Queuing send primary keypad function wo PIN with function "
+            f"{function.name} on partition {partition.index}"
+        )
+        command = model.Command(
+            model.MessageType.PrimaryKeypadFuncNoPin,
+            message,
+            {model.MessageType.ACK: self._process_ack},
+            request_ack=True,
+        )
+        self._send_request_to_queue(command)
+
+    def send_primary_keypad_function_w_pin(
+        self, partition: Partition, function: model.PrimaryKeypadFunctions
+    ) -> None:
+        message = bytearray()
+        pin_array = pin_to_bytearray(self.default_code)
+        message.extend(pin_array)
+        message.append(function.value)
+        partition_mask = 1 << (partition.index - 1)
+        message.append(partition_mask)
+        logger.debug(
+            "Queuing send primary keypad function with PIN with function "
+            f"{function.name} on partition {partition.index}"
+        )
+        command = model.Command(
+            model.MessageType.PrimaryKeypadFuncPin,
+            message,
+            {model.MessageType.ACK: self._process_ack},
+            request_ack=True,
+        )
+        self._send_request_to_queue(command)
+
+    def send_primary_keypad_function(
+        self, partition: Partition, function: model.PrimaryKeypadFunctions
+    ) -> None:
+        if self.default_code is not None:
+            self.send_primary_keypad_function_w_pin(partition, function)
+        elif self.default_user is not None:
+            self.send_primary_keypad_function_wo_pin(partition, function)
+        else:
+            logger.error(
+                f"Attempt to do primary keypad function on partition {partition.index} when no default code or user set"
+            )
+
+    def send_disarm(self, partition: Partition) -> None:
+        if partition.state == Partition.State.DISARMED:
+            logger.error(
+                f"Attempt to disarm partition {partition.index} that is already disarmed."
+            )
+            return
+        self.send_primary_keypad_function(
+            partition, model.PrimaryKeypadFunctions.Disarm
+        )
+
+    def send_arm_home(self, partition: Partition) -> None:
+        if (
+            (partition.state == Partition.State.ARMED_HOME)
+            or (partition.state == Partition.State.ARMED_AWAY)
+            or (partition.state == Partition.State.ARMING)
+        ):
+            logger.error(
+                f"Attempt to arm home partition {partition.index} that is already armed or is arming."
+            )
+        self.send_primary_keypad_function(
+            partition, model.PrimaryKeypadFunctions.ArmStay
+        )
+
+    def send_arm_away(self, partition: Partition) -> None:
+        if (
+            (partition.state == Partition.State.ARMED_HOME)
+            or (partition.state == Partition.State.ARMED_AWAY)
+            or (partition.state == Partition.State.ARMING)
+        ):
+            logger.error(
+                f"Attempt to arm home partition {partition.index} that is already armed or is arming."
+            )
+        self.send_primary_keypad_function(
+            partition, model.PrimaryKeypadFunctions.ArmAway
+        )
 
     def _db_sync_start0(self) -> None:
         self.panel_synced = False

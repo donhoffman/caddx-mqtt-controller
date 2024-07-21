@@ -97,6 +97,7 @@ class Command(NamedTuple):
     req_msg_type: MessageType
     req_msg_data: Optional[bytearray] = None
     response_handler: Optional[Dict[MessageType, Callable[[bytearray], None]]] = None
+    request_ack: bool = False
 
 
 # Interface Configuration (Response) constants
@@ -315,3 +316,14 @@ class ZoneConditionFlags(IntEnum):
     BypassMemory = (
         0b_00000010_00000000  # Zone was bypassed during the last alarm event.
     )
+
+
+class PrimaryKeypadFunctions(IntEnum):
+    TurnOffAlarm = 0x00
+    Disarm = 0x01
+    ArmAway = 0x02
+    ArmStay = 0x03
+    Cancel = 0x04
+    InitiateAutoArm = 0x05
+    StartWalkTest = 0x06
+    StopWalkTest = 0x07
