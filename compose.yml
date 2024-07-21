@@ -1,0 +1,13 @@
+services:
+  caddx-mqtt-controller:
+    build: .
+    env_file:
+      - /appdata/caddx-mqtt-controller/.env
+    devices:
+      - /dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0:/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    #  - /appdata/caddx-mqtt-controller/config.yml:/config/config.yml
+    working_dir: /app
+    command: python3 caddx-server.py
+    restart: "unless-stopped"
