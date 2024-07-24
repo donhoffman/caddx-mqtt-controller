@@ -157,9 +157,12 @@ class MQTTClient(object):
             "state_topic": "~/state",
             "command_topic": "~/set",
             "json_attributes_topic": "~/attributes",
+            "retain": True,
         }
         config_topic = f"{self.topic_prefix}/{partition.unique_name}/config"
-        self.client.publish(config_topic, json.dumps(partition_config))
+        self.client.publish(
+            config_topic, json.dumps(partition_config), qos=1, retain=True
+        )
 
     def publish_partition_states(self) -> None:
         partitions = Partition.get_all_partitions()
@@ -170,4 +173,4 @@ class MQTTClient(object):
         state = partition.state
         if state is not None:
             state_topic = f"{self.topic_prefix}/{partition.unique_name}/state"
-            self.client.publish(state_topic, state.value[0])
+            self.client.publish(state_topic, state.value[0], qos=1, retain=True)

@@ -3,6 +3,7 @@ import logging
 import serial
 import queue
 import time
+import datetime
 
 from mqtt_client import MQTTClient
 import model
@@ -78,6 +79,7 @@ class CaddxController:
                 break
             logger.debug("Discarding old message before synchronization.")
 
+        next_panel_update = datetime.datetime.max
         logger.info("Starting synchronization.")
         self._db_sync_start0()
         try:
@@ -93,6 +95,14 @@ class CaddxController:
                     self.send_set_clock_req()
                     mqtt_client.publish_configs()
                     mqtt_client.publish_online()
+                    mqtt_client.publish_partition_states()
+                    next_panel_update = datetime.datetime.now() + datetime.timedelta(
+                        minutes=30
+                    )
+                elif datetime.datetime.now() >= next_panel_update:
+                    next_panel_update = datetime.datetime.now() + datetime.timedelta(
+                        minutes=30
+                    )
                     mqtt_client.publish_partition_states()
                 time.sleep(self.sleep_between_polls)
                 received_message = self._read_message(wait=False)
