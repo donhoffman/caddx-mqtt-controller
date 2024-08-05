@@ -1,5 +1,52 @@
-from typing import Set, Dict, Optional
-import model
+from typing import Dict, Optional, ValuesView
+from enum import IntEnum
+
+
+class ZoneTypeFlags(IntEnum):
+    Fire = 0b_00000000_00000000_00000001  # Zone is a fire zone.
+    Hour24 = 0b_00000000_00000000_00000010  # Zone is a 24-hour zone.
+    KeySwitch = 0b_00000000_00000000_00000100  # Zone is a keyswitch zone.
+    Follower = 0b_00000000_00000000_00001000  # Zone is a follower zone.
+    EntryExitDelay1 = (
+        0b_00000000_00000000_00010000  # Zone is an entry/exit delay 1 zone.
+    )
+    EntryExitDelay2 = (
+        0b_00000000_00000000_00100000  # Zone is an entry/exit delay 2 zone.
+    )
+    Interior = 0b_00000000_00000000_01000000  # Zone is an interior zone.
+    LocalOnly = 0b_00000000_00000000_10000000  # Zone is local only.
+    KeypadSounder = 0b_00000000_00000001_00000000  # Zone is a keypad sounder zone.
+    YelpingSiren = 0b_00000000_00000010_00000000  # Zone is a yelping siren zone.
+    SteadySiren = 0b_00000000_00000100_00000000  # Zone is a steady siren zone.
+    Chime = 0b_00000000_00001000_00000000  # Zone is a chime zone.
+    Bypassable = 0b_00000000_00010000_00000000  # Zone is bypassable.
+    GroupBypassable = 0b_00000000_00100000_00000000  # Zone is group bypassable.
+    ForceArmable = 0b_00000000_01000000_00000000  # Zone is force armable.
+    EntryGuard = 0b_00000000_10000000_00000000  # Zone is an entry guard zone.
+    FastLoopResponse = (
+        0b_00000001_00000000_00000000  # Zone is a fast loop response zone.
+    )
+    DoubleEOLTamper = 0b_00000010_00000000_00000000  # Zone is a double EOL tamper zone.
+    Trouble = 0b_00000100_00000000_00000000  # Zone is a trouble zone.
+    CrossZone = 0b_00001000_00000000_00000000  # Zone is a cross zone.
+    DialerDelay = 0b_00010000_00000000_00000000  # Zone is a dialer delay zone.
+    SwingerShutdown = 0b_00100000_00000000_00000000  # Zone is a swinger shutdown zone.
+    Restorable = 0b_01000000_00000000_00000000  # Zone is restorable.
+    ListenIn = 0b_10000000_00000000_00000000  # Zone is a listen-in zone.
+
+
+class ZoneConditionFlags(IntEnum):
+    Faulted = 0b_00000000_00000001  # Zone is faulted (aka "triggered").
+    Tampered = 0b_00000000_00000010  # Zone is tampered.
+    Trouble = 0b_00000000_00000100  # Zone showing trouble state.
+    Bypassed = 0b_00000000_00001000  # Zone is bypassed.
+    Inhibited = 0b_00000000_00010000  # Zone is inhibited.
+    LowBattery = 0b_00000000_00100000  # Zone has low battery.
+    SupervisionLost = 0b_00000000_01000000  # Zone has lost supervision.
+    AlarmMemory = 0b_00000001_00000000  # Zone triggered the last alarm event.
+    BypassMemory = (
+        0b_00000010_00000000  # Zone was bypassed during the last alarm event.
+    )
 
 
 class Zone(object):
@@ -14,6 +61,10 @@ class Zone(object):
     def get_zone_by_unique_name(cls, unique_name: str) -> Optional["Zone"]:
         return cls.zones_by_unique_name.get(unique_name)
 
+    @classmethod
+    def get_all_zones(cls) -> ValuesView["Zone"]:
+        return cls.zones_by_index.values()
+
     def __init__(self, index: int, name: str) -> None:
         self.index = index
         self.name = name
@@ -21,53 +72,37 @@ class Zone(object):
         self._partition_mask: int = 0
         self._condition_mask: int = 0
         self._type_mask: int = 0
-        self._condition_flags: Set[model.ZoneConditionFlags] = set()
-        self._type_flags: Set[model.ZoneTypeFlags] = set()
-        self.is_updated: bool = True
+        self.is_updated: bool = False
         assert index not in self.zones_by_index, "Non-unique zone index"
+        assert self.unique_name not in self.zones_by_unique_name, "Non-unique zone unique name"
         self.__class__.zones_by_index[index] = self
         self.__class__.zones_by_unique_name[self.unique_name] = self
 
     @property
-    def bypassed(self) -> bool:
-        return (
-            model.ZoneConditionFlags.Inhibited in self._condition_flags
-            or model.ZoneConditionFlags.Bypassed in self._condition_flags
+    def is_bypassed(self) -> bool:
+        return bool(ZoneConditionFlags.Bypassed & self._condition_mask)
+
+    @property
+    def is_faulted(self) -> bool:
+        return bool(ZoneConditionFlags.Faulted & self._condition_mask)
+
+    @property
+    def is_trouble(self) -> bool:
+        # Return True if tampered, trouble, low battery, or supervision lost
+        return bool(
+            ZoneConditionFlags.Tampered & self._condition_mask
+            or ZoneConditionFlags.Trouble & self._condition_mask
+            or ZoneConditionFlags.LowBattery & self._condition_mask
+            or ZoneConditionFlags.SupervisionLost & self._condition_mask
         )
 
     @property
-    def faulted(self) -> bool:
-        return model.ZoneConditionFlags.Faulted in self._condition_flags
+    def is_valid_partition(self, partition) -> bool:
+        # Check if the bit for this partition is set in the partition mask for this zone
+        return bool(self._partition_mask & (1 << (partition.index - 1)))
 
-    @property
-    def trouble(self) -> bool:
-        return (
-            model.ZoneConditionFlags.Tampered in self._condition_flags
-            or model.ZoneConditionFlags.Trouble in self._condition_flags
-            or model.ZoneConditionFlags.LowBattery in self._condition_flags
-            or model.ZoneConditionFlags.SupervisionLost in self._condition_flags
-        )
-
-    @property
-    def condition_mask(self) -> int:
-        return self._condition_mask
-
-    @condition_mask.setter
-    def condition_mask(self, value: int) -> None:
-        self._condition_mask = value
-        self._condition_flags = set()
-        for flag in model.ZoneConditionFlags:
-            if value & flag.value:
-                self._condition_flags.add(flag)
-
-    @property
-    def type_mask(self) -> int:
-        return self._type_mask
-
-    @type_mask.setter
-    def type_mask(self, value: int) -> None:
-        self._type_mask = value
-        self._type_flags = set()
-        for flag in model.ZoneTypeFlags:
-            if value & flag.value:
-                self._type_flags.add(flag)
+    def set_masks(self, partition_mask: int, condition_mask: int, type_mask: int) -> None:
+        self._partition_mask = partition_mask
+        self._condition_mask = condition_mask
+        self._type_mask = type_mask
+        self.is_updated = True

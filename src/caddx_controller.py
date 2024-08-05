@@ -1,4 +1,6 @@
-from typing import Optional
+from typing import NamedTuple, Dict, Callable, Optional
+from types import MappingProxyType
+from enum import IntEnum
 import logging
 import serial
 import queue
@@ -6,7 +8,6 @@ import time
 import datetime
 
 from mqtt_client import MQTTClient
-import model
 from zone import Zone
 from partition import Partition
 
@@ -36,6 +37,192 @@ class StopThread(Exception):
 
 class ControllerError(Exception):
     pass
+
+
+class MessageType(IntEnum):
+    InterfaceConfigRsp = 0x01  # Interface Configuration (Response)
+    ZoneNameRsp = 0x03  # Zone Name (Response)
+    ZoneStatusRsp = 0x04  # Zone Status (Response)
+    ZonesSnapshotRsp = 0x05  # Zones Snapshot (Response)
+    PartitionStatusRsp = 0x06  # Partition Status (Response)
+    PartitionSnapshotRsp = 0x07  # Partition Snapshot (Response)
+    SystemStatusRsp = 0x08  # System Status (Response)
+    X10MessageInd = 0x09  # X10 Message (Indication)
+    LogEventInd = 0x0A  # Log Event (Indication)
+    KeypadButtonInd = 0x0B  # Keypad Button (Response)
+    ProgramDataRsp = 0x10  # Program Data Reply (Response)
+    UserInfoRsp = 0x12  # User Info Reply (Response)
+    Failed = 0x1C  # Failed Request (Response)
+    ACK = 0x1D  # Acknowledge (Response)
+    NACK = 0x1E  # Negative Acknowledge (Response)
+    Rejected = 0x1F  # Rejected (Response)
+
+    InterfaceConfigReq = 0x21  # Interface Configuration (Request)
+    ZoneNameReq = 0x23  # Zone Name (Request)
+    ZoneStatusReq = 0x24  # Zone Status (Request)
+    ZonesSnapshotReq = 0x25  # Zones Snapshot (Request)
+    PartitionStatusReq = 0x26  # Partition Status (Request)
+    PartitionSnapshotReq = 0x27  # Partition Snapshot (Request)
+    SystemStatusReq = 0x28  # System Status (Request)
+    X10MessageReq = 0x29  # X10 Message (Request)
+    LogEventReq = 0x2A  # Log Event (Request)
+    KeypadTextMsgReq = 0x2B  # Keypad Text Message (Request)
+    KeypadTerminalModeReq = 0x2C  # Keypad Terminal Mode (Request)
+    ProgramDataReq = 0x30  # Program Data Request (Request)
+    ProgramDataCmd = 0x31  # Program Data Command (Request)
+    UserInfoReqPin = 0x32  # User Info Request with PIN (Request)
+    UserInfoReqNoPin = 0x33  # User Info Request without PIN (Request)
+    SetUserCodePin = 0x34  # Set User Code with PIN (Request)
+    SetUserCodeNoPin = 0x35  # Set User Code without PIN (Request)
+    SetUserAuthorityPin = 0x36  # Set User Authority with PIN (Request)
+    SetUserAuthorityNoPin = 0x37  # Set User Authority without PIN (Request)
+    SetClockCalendar = 0x3B  # Set Clock/Calendar (Request)
+    PrimaryKeypadFuncPin = 0x3C  # Primary Keypad Function with PIN (Request)
+    PrimaryKeypadFuncNoPin = 0x3D  # Primary Keypad Function without PIN (Request)
+    SecondaryKeypadFunc = 0x3E  # Secondary Keypad Function (Request)
+    ZoneBypassToggle = 0x3F  # Zone Bypass Toggle (Request)
+
+
+MessageValidLength = MappingProxyType(
+    {
+        MessageType.InterfaceConfigRsp: 11,
+        MessageType.ZoneNameRsp: 18,
+        MessageType.ZoneStatusRsp: 8,
+        MessageType.ZonesSnapshotRsp: 10,
+        MessageType.PartitionStatusRsp: 9,
+        MessageType.PartitionSnapshotRsp: 9,
+        MessageType.SystemStatusRsp: 12,
+        MessageType.X10MessageInd: 4,
+        MessageType.LogEventInd: 10,
+        MessageType.KeypadButtonInd: 3,
+        MessageType.ProgramDataRsp: 13,
+        MessageType.UserInfoRsp: 17,
+        MessageType.Failed: 1,
+        MessageType.ACK: 1,
+        MessageType.NACK: 1,
+        MessageType.Rejected: 1,
+        MessageType.InterfaceConfigReq: 1,
+        MessageType.ZoneNameReq: 2,
+        MessageType.ZoneStatusReq: 2,
+        MessageType.ZonesSnapshotReq: 2,
+        MessageType.PartitionStatusReq: 2,
+        MessageType.PartitionSnapshotReq: 1,
+        MessageType.SystemStatusReq: 1,
+        MessageType.X10MessageReq: 4,
+        MessageType.LogEventReq: 2,
+        MessageType.KeypadTextMsgReq: 12,
+        MessageType.KeypadTerminalModeReq: 3,
+        MessageType.ProgramDataReq: 4,
+        MessageType.ProgramDataCmd: 13,
+        MessageType.UserInfoReqPin: 5,
+        MessageType.UserInfoReqNoPin: 2,
+        MessageType.SetUserCodePin: 8,
+        MessageType.SetUserCodeNoPin: 5,
+        MessageType.SetUserAuthorityPin: 7,
+        MessageType.SetUserAuthorityNoPin: 4,
+        MessageType.SetClockCalendar: 7,
+        MessageType.PrimaryKeypadFuncPin: 6,
+        MessageType.PrimaryKeypadFuncNoPin: 4,
+        MessageType.SecondaryKeypadFunc: 3,
+        MessageType.ZoneBypassToggle: 2,
+    }
+)
+
+
+class Command(NamedTuple):
+    req_msg_type: MessageType
+    req_msg_data: Optional[bytearray] = None
+    response_handler: Optional[Dict[MessageType, Callable[[bytearray], None]]] = None
+    request_ack: bool = False
+
+
+# Interface Configuration (Response) constants
+class TransitionMessageFlags(IntEnum):
+    # Combined transition/broadcast message flags.
+    # Represented as 2 bytes in little-endian format OTW, so lower index bytes are rightmost when represented as int.
+    # Interface Configuration response
+    InterfaceConfig = 0b_00000000_00000010
+    # Zone Status response
+    ZoneStatus = 0b_00000000_00010000
+    # Zone Snapshot response
+    ZoneSnapshot = 0b_00000000_00100000
+    # Partition Status response
+    PartitionStatus = 0b_00000000_01000000
+    # Partition Snapshot response
+    PartitionSnapshot = 0b_00000000_10000000
+    # System Status response
+    SystemStatus = 0b_00000001_00000000
+    # X10 Message indication
+    X10Message = 0b_00000010_00000000
+    # Log Event response/indication
+    LogEvent = 0b_00000100_00000000
+    # Keypad Button response
+    KeypadButton = 0b_00001000_00000000
+
+
+class RequestCommandFlags(IntEnum):
+    # Combined request/ message flags.
+    # Represented as 4 bytes in little-endian format over-the-wire, so lower index bytes are rightmost
+    #  when represented as int.
+    # Interface Configuration request
+    InterfaceConfig = 0b_00000000_00000000_00000000_00000010
+    # Zone Name request
+    ZoneName = 0b_00000000_00000000_00000000_00001000
+    # Zone Status request
+    ZoneStatus = 0b_00000000_00000000_00000000_00010000
+    # Zone Snapshot request
+    ZoneSnapshot = 0b_00000000_00000000_00000000_00100000
+    # Partition Status request
+    PartitionStatus = 0b_00000000_00000000_00000000_01000000
+    # Partition Snapshot request
+    PartitionSnapshot = 0b_00000000_00000000_00000000_10000000
+    # System Status request
+    SystemStatus = 0b_00000000_00000000_00000001_00000000
+    # X10 Message request
+    X10Message = 0b_00000000_00000000_00000010_00000000
+    # Log Event request
+    LogEvent = 0b_00000000_00000000_00000100_00000000
+    # Keypad Text Message request
+    KeypadTextMessage = 0b_00000000_00000000_00001000_00000000
+    # Keypad Terminal Mode request
+    KeypadTerminalMode = 0b_00000000_00000000_00010000_00000000
+    # Program Data request
+    ProgramData = 0b_00000000_00000001_00000000_00000000
+    # Program Data command
+    ProgramDataCommand = 0b_00000000_00000010_00000000_00000000
+    # User Info request with PIN
+    UserInfoPin = 0b_00000000_00000100_00000000_00000000
+    # User Info request without PIN
+    UserInfoNoPin = 0b_00000000_00001000_00000000_00000000
+    # Set User Code with PIN
+    SetUserCodePin = 0b_00000000_00010000_00000000_00000000
+    # Set User Code without PIN
+    SetUserCodeNoPin = 0b_00000000_00100000_00000000_00000000
+    # Set User Authority with PIN
+    SetUserAuthorityPin = 0b_00000000_01000000_00000000_00000000
+    # Set User Authority without PIN
+    SetUserAuthorityNoPin = 0b_00000000_10000000_00000000_00000000
+    # Set Clock/Calendar
+    SetClockCalendar = 0b_00001000_00000000_00000000_00000000
+    # Primary Keypad Function with PIN
+    PrimaryKeypadPin = 0b_00010000_00000000_00000000_00000000
+    # Primary Keypad Function without PIN
+    PrimaryKeypadNoPin = 0b_00100000_00000000_00000000_00000000
+    # Secondary Keypad Function
+    SecondaryKeypad = 0b_01000000_00000000_00000000_00000000
+    # Zone Bypass Toggle
+    ZoneBypassToggle = 0b_10000000_00000000_00000000_00000000
+
+
+class PrimaryKeypadFunctions(IntEnum):
+    TurnOffAlarm = 0x00
+    Disarm = 0x01
+    ArmAway = 0x02
+    ArmStay = 0x03
+    Cancel = 0x04
+    InitiateAutoArm = 0x05
+    StartWalkTest = 0x06
+    StopWalkTest = 0x07
 
 
 class CaddxController:
@@ -199,21 +386,21 @@ class CaddxController:
     def _process_transition_message(self, received_message: bytearray) -> None:
         message_type = received_message[0] & ~0xC0
         ack_requested = bool(received_message[0] & 0x80)
-        if message_type not in model.MessageValidLength:
+        if message_type not in MessageValidLength:
             logger.error(f"Invalid message type: {message_type}")
             return
-        if len(received_message) != model.MessageValidLength[message_type]:
+        if len(received_message) != MessageValidLength[message_type]:
             logger.error("Invalid message length for type. Discarding message.")
             return
         if self.panel_synced:
             match message_type:
-                case model.MessageType.InterfaceConfigRsp:
+                case MessageType.InterfaceConfigRsp:
                     self._process_interface_config_rsp(received_message)
-                case model.MessageType.ZoneStatusRsp:
+                case MessageType.ZoneStatusRsp:
                     self._process_zone_status_rsp(received_message)
-                case model.MessageType.PartitionStatusRsp:
+                case MessageType.PartitionStatusRsp:
                     self._process_partition_status_rsp(received_message)
-                case model.MessageType.SystemStatusRsp:
+                case MessageType.SystemStatusRsp:
                     self._process_system_status_rsp(received_message)
                 case _:
                     # Message type not implemented.  ACK if requested though.
@@ -237,89 +424,89 @@ class CaddxController:
 
         # Log enabled transition-based broadcast messages
         logger.debug("Transition-based broadcast messages enabled:")
-        for message_type in model.TransitionMessageFlags:
+        for message_type in TransitionMessageFlags:
             logger.debug(
                 f"  - {message_type.name}: {bool(transition_message_flags & message_type)}"
             )
 
         # Log enabled command/request messages
         logger.debug("Command/request messages enabled:")
-        for message_type in model.RequestCommandFlags:
+        for message_type in RequestCommandFlags:
             logger.debug(
                 f"  - {message_type.name}: {bool(request_command_flags & message_type)}"
             )
 
         # Check for that all required messages are enabled
         required_message_disabled = False
-        if not transition_message_flags & model.TransitionMessageFlags.InterfaceConfig:
+        if not transition_message_flags & TransitionMessageFlags.InterfaceConfig:
             logger.error(
                 "Interface Config Message is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not transition_message_flags & model.TransitionMessageFlags.ZoneStatus:
+        if not transition_message_flags & TransitionMessageFlags.ZoneStatus:
             logger.error(
                 "Zone Status Message is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not transition_message_flags & model.TransitionMessageFlags.PartitionStatus:
+        if not transition_message_flags & TransitionMessageFlags.PartitionStatus:
             logger.error(
                 "Partition Status Message is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
         if (
             not transition_message_flags
-            & model.TransitionMessageFlags.PartitionSnapshot
+            & TransitionMessageFlags.PartitionSnapshot
         ):
             logger.error(
                 "Partition Snapshot Message is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not transition_message_flags & model.TransitionMessageFlags.SystemStatus:
+        if not transition_message_flags & TransitionMessageFlags.SystemStatus:
             logger.error(
                 "System Status Message is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.InterfaceConfig:
+        if not request_command_flags & RequestCommandFlags.InterfaceConfig:
             logger.error(
                 "Interface Config Request is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.ZoneName:
+        if not request_command_flags & RequestCommandFlags.ZoneName:
             logger.error(
                 "Zone Name Request is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.ZoneStatus:
+        if not request_command_flags & RequestCommandFlags.ZoneStatus:
             logger.error(
                 "Zone Status Request is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.ZoneSnapshot:
+        if not request_command_flags & RequestCommandFlags.ZoneSnapshot:
             logger.error(
                 "Zone Snapshot Request is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.PartitionStatus:
+        if not request_command_flags & RequestCommandFlags.PartitionStatus:
             logger.error(
                 "Partition Status Request is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.PartitionSnapshot:
+        if not request_command_flags & RequestCommandFlags.PartitionSnapshot:
             logger.error(
                 "Partition Snapshot Request is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.SystemStatus:
+        if not request_command_flags & RequestCommandFlags.SystemStatus:
             logger.error(
                 "System Status Request is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.SetClockCalendar:
+        if not request_command_flags & RequestCommandFlags.SetClockCalendar:
             logger.error(
                 "Set Clock/Calendar Request is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if not request_command_flags & model.RequestCommandFlags.PrimaryKeypadNoPin:
+        if not request_command_flags & RequestCommandFlags.PrimaryKeypadNoPin:
             logger.error(
                 "Primary Keypad No Pin Request is not enabled. This is required for proper operation."
             )
@@ -342,7 +529,7 @@ class CaddxController:
         # Note that we request zone names for all zones on first startup.   In the case of this handler
         #  the zone object may not yet exist, and we can instantiate if necessary.   For other zone
         #  messages the zone object should already exist.
-        if len(message) != model.MessageValidLength[model.MessageType.ZoneNameRsp]:
+        if len(message) != MessageValidLength[MessageType.ZoneNameRsp]:
             logger.error("Invalid zone name message.")
             return
         zone_index = (
@@ -364,7 +551,7 @@ class CaddxController:
 
     # noinspection PyMethodMayBeStatic
     def _process_zone_status_rsp(self, message: bytearray) -> None:
-        if len(message) != model.MessageValidLength[model.MessageType.ZoneStatusRsp]:
+        if len(message) != MessageValidLength[MessageType.ZoneStatusRsp]:
             logger.error("Invalid zone status message.")
             return
         zone_index = (
@@ -376,8 +563,11 @@ class CaddxController:
             return
         logger.debug(f"Got status for zone {zone_index} - {zone.name}.")
         # Skip partition mask at [2:3]
-        zone.type_mask = int.from_bytes(message[3:6], byteorder="little")
-        zone.condition_mask = int.from_bytes(message[6:8], byteorder="little")
+        zone.set_masks(
+            int.from_bytes(message[2:3], byteorder="little"),  # partition mask
+            int.from_bytes(message[3:6], byteorder="little"),  # condition mask
+            int.from_bytes(message[6:8], byteorder="little")   # type mask
+        )
         return
 
     # noinspection PyMethodMayBeStatic
@@ -393,7 +583,7 @@ class CaddxController:
             # z.trouble = bool(get_nth_bit(mask, start_bit + 2))
             z.is_updated = True
 
-        if len(message) != model.MessageValidLength[model.MessageType.ZonesSnapshotRsp]:
+        if len(message) != MessageValidLength[MessageType.ZonesSnapshotRsp]:
             logger.error("Invalid z snapshot message.")
             return
         zone_index = int(message[1]) * 16
@@ -408,7 +598,7 @@ class CaddxController:
     def _process_partition_status_rsp(self, message: bytearray) -> None:
         if (
             len(message)
-            != model.MessageValidLength[model.MessageType.PartitionStatusRsp]
+            != MessageValidLength[MessageType.PartitionStatusRsp]
         ):
             logger.error("Invalid partition status response message.")
             return
@@ -439,7 +629,7 @@ class CaddxController:
             self.mqtt_client.publish_partition_state(partition)
 
     def _process_system_status_rsp(self, message: bytearray) -> None:
-        if len(message) != model.MessageValidLength[model.MessageType.SystemStatusRsp]:
+        if len(message) != MessageValidLength[MessageType.SystemStatusRsp]:
             logger.error("Invalid system status message.")
             return
         if self.panel_id is None:
@@ -480,7 +670,7 @@ class CaddxController:
         """
         while not self._command_queue.empty():
             command = self._command_queue.get()
-            assert isinstance(command, model.Command)
+            assert isinstance(command, Command)
 
             # Retry command up to 3 times on timeout.
             # Processed transition message do not count toward timeout and are processed in-line.
@@ -503,7 +693,7 @@ class CaddxController:
                 incoming_message_type_byte = incoming_message[0] & 0b001111111
                 incoming_message_is_acked = bool(incoming_message[0] & 0b10000000)
                 try:
-                    incoming_message_type = model.MessageType(
+                    incoming_message_type = MessageType(
                         incoming_message_type_byte
                     )
                 except ValueError:
@@ -514,9 +704,9 @@ class CaddxController:
 
                 # Panel did not like our message.   Don't resend.
                 if incoming_message_type in (
-                    model.MessageType.Rejected,
-                    model.MessageType.Failed,
-                    model.MessageType.NACK,
+                    MessageType.Rejected,
+                    MessageType.Failed,
+                    MessageType.NACK,
                 ):
                     logger.critical(
                         f"Message of type {command.req_msg_type.name} rejected by panel"
@@ -545,24 +735,24 @@ class CaddxController:
                 break
         return
 
-    def _send_request_to_queue(self, command: model.Command) -> None:
+    def _send_request_to_queue(self, command: Command) -> None:
         self._command_queue.put(command)
         return
 
     def _send_direct(
         self,
-        message_type: model.MessageType,
+        message_type: MessageType,
         message_data: Optional[bytearray],
         request_ack: bool = False,
     ) -> None:
         message_length = 1 + len(message_data) if message_data else 1
-        if message_type not in model.MessageValidLength:
+        if message_type not in MessageValidLength:
             logger.error(f"Unsupported message type: {message_type:02x}")
             return
-        if not message_length == model.MessageValidLength[message_type]:
+        if not message_length == MessageValidLength[message_type]:
             logger.error(
                 f"Invalid message length for message type {message_type.name}. "
-                f"Expected {model.MessageValidLength[message_type]}, got {message_length}."
+                f"Expected {MessageValidLength[message_type]}, got {message_length}."
             )
             return
         if request_ack:
@@ -593,37 +783,37 @@ class CaddxController:
 
     def _send_direct_ack(self):
         time.sleep(0.25)
-        self._send_direct(model.MessageType.ACK, None)
+        self._send_direct(MessageType.ACK, None)
 
     def _send_direct_nack(self):
-        self._send_direct(model.MessageType.NACK, None)
+        self._send_direct(MessageType.NACK, None)
 
     def _send_interface_configuration_req(self) -> None:
         logger.debug(f"Queuing interface configuration request")
-        command = model.Command(
-            model.MessageType.InterfaceConfigReq,
+        command = Command(
+            MessageType.InterfaceConfigReq,
             None,
-            {model.MessageType.InterfaceConfigRsp: self._process_interface_config_rsp},
+            {MessageType.InterfaceConfigRsp: self._process_interface_config_rsp},
         )
         self._send_request_to_queue(command)
 
     def _send_zone_name_req(self, zone: int) -> None:
         logger.debug(f"Queuing zone name request for zone {zone}")
         zone_index = (zone - 1) & 0xFF
-        command = model.Command(
-            model.MessageType.ZoneNameReq,
+        command = Command(
+            MessageType.ZoneNameReq,
             bytearray(zone_index.to_bytes(1, byteorder="little")),
-            {model.MessageType.ZoneNameRsp: self._process_zone_name_rsp},
+            {MessageType.ZoneNameRsp: self._process_zone_name_rsp},
         )
         self._send_request_to_queue(command)
 
     def _send_zone_status_req(self, zone: int) -> None:
         logger.debug(f"Queuing zone status request for zone {zone}")
         zone_index = (zone - 1) & 0xFF
-        command = model.Command(
-            model.MessageType.ZoneStatusReq,
+        command = Command(
+            MessageType.ZoneStatusReq,
             bytearray(zone_index.to_bytes(1, byteorder="little")),
-            {model.MessageType.ZoneStatusRsp: self._process_zone_status_rsp},
+            {MessageType.ZoneStatusRsp: self._process_zone_status_rsp},
         )
         self._send_request_to_queue(command)
 
@@ -631,19 +821,19 @@ class CaddxController:
         logger.debug(f"Queuing partition {partition} status request.")
         assert 1 <= partition <= 7
         partition = partition - 1
-        command = model.Command(
-            model.MessageType.PartitionStatusReq,
+        command = Command(
+            MessageType.PartitionStatusReq,
             bytearray(partition.to_bytes(1, byteorder="little")),
-            {model.MessageType.PartitionStatusRsp: self._process_partition_status_rsp},
+            {MessageType.PartitionStatusRsp: self._process_partition_status_rsp},
         )
         self._send_request_to_queue(command)
 
     def _send_system_status_req(self) -> None:
         logger.debug(f"Queuing system status request")
-        command = model.Command(
-            model.MessageType.SystemStatusReq,
+        command = Command(
+            MessageType.SystemStatusReq,
             None,
-            {model.MessageType.SystemStatusRsp: self._process_system_status_rsp},
+            {MessageType.SystemStatusRsp: self._process_system_status_rsp},
         )
         self._send_request_to_queue(command)
 
@@ -660,15 +850,15 @@ class CaddxController:
         message.extend(corrected_wday.to_bytes(1, byteorder="little"))
         assert len(message) == 6
         logger.debug(f"Queuing set clock/date request")
-        command = model.Command(
-            model.MessageType.SetClockCalendar,
+        command = Command(
+            MessageType.SetClockCalendar,
             message,
-            {model.MessageType.ACK: self._process_ack},
+            {MessageType.ACK: self._process_ack},
         )
         self._send_request_to_queue(command)
 
     def send_primary_keypad_function_wo_pin(
-        self, partition: Partition, function: model.PrimaryKeypadFunctions
+        self, partition: Partition, function: PrimaryKeypadFunctions
     ) -> None:
         message = bytearray()
         message.append(function.value)
@@ -679,16 +869,16 @@ class CaddxController:
             "Queuing send primary keypad function wo PIN with function "
             f"{function.name} on partition {partition.index}"
         )
-        command = model.Command(
-            model.MessageType.PrimaryKeypadFuncNoPin,
+        command = Command(
+            MessageType.PrimaryKeypadFuncNoPin,
             message,
-            {model.MessageType.ACK: self._process_ack},
+            {MessageType.ACK: self._process_ack},
             request_ack=True,
         )
         self._send_request_to_queue(command)
 
     def send_primary_keypad_function_w_pin(
-        self, partition: Partition, function: model.PrimaryKeypadFunctions
+        self, partition: Partition, function: PrimaryKeypadFunctions
     ) -> None:
         message = bytearray()
         pin_array = pin_to_bytearray(self.default_code)
@@ -700,16 +890,16 @@ class CaddxController:
             "Queuing send primary keypad function with PIN with function "
             f"{function.name} on partition {partition.index}"
         )
-        command = model.Command(
-            model.MessageType.PrimaryKeypadFuncPin,
+        command = Command(
+            MessageType.PrimaryKeypadFuncPin,
             message,
-            {model.MessageType.ACK: self._process_ack},
+            {MessageType.ACK: self._process_ack},
             request_ack=True,
         )
         self._send_request_to_queue(command)
 
     def send_primary_keypad_function(
-        self, partition: Partition, function: model.PrimaryKeypadFunctions
+        self, partition: Partition, function: PrimaryKeypadFunctions
     ) -> None:
         if self.default_code is not None:
             self.send_primary_keypad_function_w_pin(partition, function)
@@ -727,7 +917,7 @@ class CaddxController:
             )
             return
         self.send_primary_keypad_function(
-            partition, model.PrimaryKeypadFunctions.Disarm
+            partition, PrimaryKeypadFunctions.Disarm
         )
 
     def send_arm_home(self, partition: Partition) -> None:
@@ -740,7 +930,7 @@ class CaddxController:
                 f"Attempt to arm home partition {partition.index} that is already armed or is arming."
             )
         self.send_primary_keypad_function(
-            partition, model.PrimaryKeypadFunctions.ArmStay
+            partition, PrimaryKeypadFunctions.ArmStay
         )
 
     def send_arm_away(self, partition: Partition) -> None:
@@ -753,7 +943,7 @@ class CaddxController:
                 f"Attempt to arm home partition {partition.index} that is already armed or is arming."
             )
         self.send_primary_keypad_function(
-            partition, model.PrimaryKeypadFunctions.ArmAway
+            partition, PrimaryKeypadFunctions.ArmAway
         )
 
     def _db_sync_start0(self) -> None:
