@@ -453,10 +453,7 @@ class CaddxController:
                 "Partition Status Message is not enabled. This is required for proper operation."
             )
             required_message_disabled = True
-        if (
-            not transition_message_flags
-            & TransitionMessageFlags.PartitionSnapshot
-        ):
+        if not transition_message_flags & TransitionMessageFlags.PartitionSnapshot:
             logger.error(
                 "Partition Snapshot Message is not enabled. This is required for proper operation."
             )
@@ -566,7 +563,7 @@ class CaddxController:
         zone.set_masks(
             int.from_bytes(message[2:3], byteorder="little"),  # partition mask
             int.from_bytes(message[3:6], byteorder="little"),  # condition mask
-            int.from_bytes(message[6:8], byteorder="little")   # type mask
+            int.from_bytes(message[6:8], byteorder="little"),  # type mask
         )
         return
 
@@ -596,10 +593,7 @@ class CaddxController:
 
     # noinspection PyMethodMayBeStatic
     def _process_partition_status_rsp(self, message: bytearray) -> None:
-        if (
-            len(message)
-            != MessageValidLength[MessageType.PartitionStatusRsp]
-        ):
+        if len(message) != MessageValidLength[MessageType.PartitionStatusRsp]:
             logger.error("Invalid partition status response message.")
             return
         partition_id = int(message[1]) + 1
@@ -693,9 +687,7 @@ class CaddxController:
                 incoming_message_type_byte = incoming_message[0] & 0b001111111
                 incoming_message_is_acked = bool(incoming_message[0] & 0b10000000)
                 try:
-                    incoming_message_type = MessageType(
-                        incoming_message_type_byte
-                    )
+                    incoming_message_type = MessageType(incoming_message_type_byte)
                 except ValueError:
                     logger.critical(
                         f"Unknown incoming message type: {incoming_message_type_byte:02x}"
@@ -916,9 +908,7 @@ class CaddxController:
                 f"Attempt to disarm partition {partition.index} that is already disarmed."
             )
             return
-        self.send_primary_keypad_function(
-            partition, PrimaryKeypadFunctions.Disarm
-        )
+        self.send_primary_keypad_function(partition, PrimaryKeypadFunctions.Disarm)
 
     def send_arm_home(self, partition: Partition) -> None:
         if (
@@ -929,9 +919,7 @@ class CaddxController:
             logger.error(
                 f"Attempt to arm home partition {partition.index} that is already armed or is arming."
             )
-        self.send_primary_keypad_function(
-            partition, PrimaryKeypadFunctions.ArmStay
-        )
+        self.send_primary_keypad_function(partition, PrimaryKeypadFunctions.ArmStay)
 
     def send_arm_away(self, partition: Partition) -> None:
         if (
@@ -942,9 +930,7 @@ class CaddxController:
             logger.error(
                 f"Attempt to arm home partition {partition.index} that is already armed or is arming."
             )
-        self.send_primary_keypad_function(
-            partition, PrimaryKeypadFunctions.ArmAway
-        )
+        self.send_primary_keypad_function(partition, PrimaryKeypadFunctions.ArmAway)
 
     def _db_sync_start0(self) -> None:
         self.panel_synced = False

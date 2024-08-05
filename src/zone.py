@@ -74,7 +74,9 @@ class Zone(object):
         self._type_mask: int = 0
         self.is_updated: bool = False
         assert index not in self.zones_by_index, "Non-unique zone index"
-        assert self.unique_name not in self.zones_by_unique_name, "Non-unique zone unique name"
+        assert (
+            self.unique_name not in self.zones_by_unique_name
+        ), "Non-unique zone unique name"
         self.__class__.zones_by_index[index] = self
         self.__class__.zones_by_unique_name[self.unique_name] = self
 
@@ -96,12 +98,13 @@ class Zone(object):
             or ZoneConditionFlags.SupervisionLost & self._condition_mask
         )
 
-    @property
     def is_valid_partition(self, partition) -> bool:
         # Check if the bit for this partition is set in the partition mask for this zone
         return bool(self._partition_mask & (1 << (partition.index - 1)))
 
-    def set_masks(self, partition_mask: int, condition_mask: int, type_mask: int) -> None:
+    def set_masks(
+        self, partition_mask: int, condition_mask: int, type_mask: int
+    ) -> None:
         self._partition_mask = partition_mask
         self._condition_mask = condition_mask
         self._type_mask = type_mask
