@@ -4,6 +4,7 @@ import logging
 import paho.mqtt.client as mqtt
 
 from partition import Partition
+from zone import Zone
 
 logger = logging.getLogger("app.mqtt_client")
 
@@ -163,6 +164,93 @@ class MQTTClient(object):
         self.client.publish(
             config_topic, json.dumps(partition_config), qos=1, retain=True
         )
+
+    def publish_zone_config(self, zone: Zone) -> None:
+        # The zone config defines three entities for the zone:
+        # 1. A binary sensor for the zone's bypass status
+        # 2. A binary sensor for the zone's fault status
+        # 3. A binary sensor for the zone's trouble status
+        zone_config_bypass = {
+            "name": f"{zone.name} Bypass",
+            "device_class": "sensor",
+            "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_bypass",
+            "device": {
+                "name": zone.name,
+                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}_bypass"],
+                "manufacturer": "Caddx",
+                "model": "NX8E",
+            },
+            "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
+            "~": f"{self.topic_prefix}/{zone.unique_name}",
+            "state_topic": "~/state",
+            "state_template": "{{ value_json.bypassed }}",
+            "availability_topic": self.availability_topic,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "retain": True,
+        }
+        zone_config_faulted = {
+            "name": f"{zone.name} Faulted",
+            "device_class": "sensor",
+            "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_faulted",
+            "device": {
+                "name": zone.name,
+                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}_faulted"],
+                "manufacturer": "Caddx",
+                "model": "NX8E",
+            },
+            "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
+            "~": f"{self.topic_prefix}/{zone.unique_name}",
+            "state_topic": "~/state",
+            "state_template": "{{ value_json.faulted }}",
+            "availability_topic": self.availability_topic,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "retain": True,
+        }
+        zone_config_trouble = {
+            "name": f"{zone.name} Trouble",
+            "device_class": "problem",
+            "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_trouble",
+            "device": {
+                "name": zone.name,
+                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}_trouble"],
+                "manufacturer": "Caddx",
+                "model": "NX8E",
+            },
+            "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
+            "~": f"{self.topic_prefix}/{zone.unique_name}",
+            "state_topic": "~/state",
+            "state_template": "{{ value_json.trouble }}",
+            "availability_topic": self.availability_topic,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "retain": True,
+        }
+        zone_config = [zone_config_bypass, zone_config_faulted, zone_config_trouble]
+        config_topic = f"{self.topic_prefix}/{zone.unique_name}/config"
+        self.client.publish(config_topic, json.dumps(zone_config), qos=1, retain=True)
+
+    def publish_zone_configs(self) -> None:
+        zones = Zone.get_all_zones()
+        for zone in zones:
+            self.publish_zone_config(zone)
+
+    def publish_zone_states(self) -> None:
+        zones = Zone.get_all_zones()
+        for zone in zones:
+            self.publish_zone_state(zone)
+
+    def publish_zone_state(self, zone: Zone) -> None:
+        if not zone.is_updated:
+            return
+        state = {
+            "bypassed": "ON" if zone.is_bypassed else "OFF",
+            "faulted": "ON" if zone.is_faulted else "OFF",
+            "trouble": "ON" if zone.is_trouble else "OFF",
+        }
+        state_topic = f"{self.topic_prefix}/{zone.unique_name}/state"
+        self.client.publish(state_topic, json.dumps(state), qos=1, retain=True)
 
     def publish_partition_states(self) -> None:
         partitions = Partition.get_all_partitions()
