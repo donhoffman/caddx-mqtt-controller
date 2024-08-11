@@ -98,6 +98,12 @@ def main() -> int:
         help="Default user number to use for arming and disarming",
         default=os.getenv("CODE", "1"),
     )
+    parser.add_argument(
+        "--ignored-zones",
+        type=str,
+        help="Comma separated list of zones to ignore",
+        default=os.getenv("IGNORED_ZONES", None),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
@@ -117,6 +123,7 @@ def main() -> int:
             args.max_zones,
             default_code=args.code,
             default_user=args.user,
+            ignored_zones=args.ignored_zones,
         )
     except Exception as e:
         logger.error(f"Failed to initialize Caddx MQTT Controller: {e}")

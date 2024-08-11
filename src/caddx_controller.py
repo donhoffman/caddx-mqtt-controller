@@ -233,6 +233,7 @@ class CaddxController:
         number_zones: int,
         default_code: str = None,
         default_user: str = None,
+        ignored_zones: str = None,
     ) -> None:
         self.serial_path = serial_path
         self.number_zones = number_zones
@@ -247,6 +248,9 @@ class CaddxController:
         self.panel_firmware: Optional[str] = None
         self.panel_id: Optional[int] = None
         self.partition_mask: Optional[int] = None
+        self.ignored_zones: set[int] = (
+            set([int(x) for x in ignored_zones.split(",")]) if ignored_zones else set()
+        )
         self.conn = serial.Serial(serial_path, baudrate=baud_rate, timeout=2)
         logger.info(f"Opened serial connection at '{serial_path}'. Mode is binary")
 
@@ -281,22 +285,19 @@ class CaddxController:
                     )
                     self.send_set_clock_req()
                     mqtt_client.publish_configs()
+                    mqtt_client.publish_zone_configs()
                     mqtt_client.publish_online()
                     mqtt_client.publish_partition_states()
-                    test_zone = Zone.get_zone_by_index(1)
-                    mqtt_client.publish_zone_config(test_zone)
-                    mqtt_client.publish_zone_state(test_zone)
+                    mqtt_client.publish_zone_states()
                     next_panel_update = datetime.datetime.now() + datetime.timedelta(
-                        minutes=1
+                        minutes=60
                     )
                 elif datetime.datetime.now() >= next_panel_update:
                     next_panel_update = datetime.datetime.now() + datetime.timedelta(
-                        minutes=1
+                        minutes=60
                     )
                     mqtt_client.publish_partition_states()
-                    test_zone = Zone.get_zone_by_index(1)
-                    mqtt_client.publish_zone_state(test_zone)
-
+                    mqtt_client.publish_zone_states()
                 time.sleep(self.sleep_between_polls)
                 received_message = self._read_message(wait=False)
                 if received_message is not None:
@@ -538,6 +539,11 @@ class CaddxController:
         zone_index = (
             int(message[1]) + 1
         )  # Server zones start from 1.  Panel zones start from 0.
+        if zone_index > self.number_zones and zone_index not in self.ignored_zones:
+            logger.debug(
+                f"Zone index {zone_index} is out of range or ignored. Ignoring zone name response."
+            )
+            return
         zone_name = message[2:].decode("utf-8").rstrip()
         zone = Zone.get_zone_by_index(zone_index)
         if zone is None:
@@ -560,6 +566,11 @@ class CaddxController:
         zone_index = (
             int(message[1]) + 1
         )  # Server zones start from 1.  Panel zones start from 0.
+        if zone_index > self.number_zones and zone_index not in self.ignored_zones:
+            logger.debug(
+                f"Zone index {zone_index} is out of range or ignored. Ignoring zone status."
+            )
+            return
         zone = Zone.get_zone_by_index(zone_index)
         if zone is None:
             logger.error(f"Ignoring zone status. Unknown zone index: {zone_index}")
@@ -951,5 +962,6 @@ class CaddxController:
 
         # Get all the zone information up to self.number_zones.
         for zone_number in range(1, (self.number_zones + 1)):
-            self._send_zone_name_req(zone_number)
-            self._send_zone_status_req(zone_number)
+            if zone_number not in self.ignored_zones:
+                self._send_zone_name_req(zone_number)
+                self._send_zone_status_req(zone_number)
