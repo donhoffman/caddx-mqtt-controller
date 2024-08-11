@@ -283,14 +283,20 @@ class CaddxController:
                     mqtt_client.publish_configs()
                     mqtt_client.publish_online()
                     mqtt_client.publish_partition_states()
+                    test_zone = Zone.get_zone_by_index(1)
+                    mqtt_client.publish_zone_config(test_zone)
+                    mqtt_client.publish_zone_state(test_zone)
                     next_panel_update = datetime.datetime.now() + datetime.timedelta(
-                        minutes=30
+                        minutes=1
                     )
                 elif datetime.datetime.now() >= next_panel_update:
                     next_panel_update = datetime.datetime.now() + datetime.timedelta(
-                        minutes=30
+                        minutes=1
                     )
                     mqtt_client.publish_partition_states()
+                    test_zone = Zone.get_zone_by_index(1)
+                    mqtt_client.publish_zone_state(test_zone)
+
                 time.sleep(self.sleep_between_polls)
                 received_message = self._read_message(wait=False)
                 if received_message is not None:

@@ -29,12 +29,16 @@ class MQTTClient(object):
         self.topic_root = topic_root
         self.panel_unique_id = panel_unique_id
         self.panel_name = panel_name
-        self.topic_prefix = (
+        self.topic_prefix_panel = (
             f"{self.topic_root}/alarm_control_panel/{self.panel_unique_id}"
         )
-        self.command_topic_path = f"{self.topic_prefix}/+/set"
-        self.state_topic_path = f"{self.topic_prefix}/+/state"
-        self.availability_topic = f"{self.topic_prefix}/availability"
+        self.command_topic_path_panel = f"{self.topic_prefix_panel}/+/set"
+        self.state_topic_path_panel = f"{self.topic_prefix_panel}/+/state"
+        self.topic_prefix_zones = (
+            f"{self.topic_root}/binary_sensor/{self.panel_unique_id}"
+        )
+        self.state_topic_path_zones = f"{self.topic_prefix_zones}/+/state"
+        self.availability_topic = f"{self.topic_prefix_panel}/availability"
         self.caddx_ctrl = caddx_ctrl
         self.timeout_seconds = timeout_seconds
         self.client = mqtt.Client()
@@ -64,7 +68,7 @@ class MQTTClient(object):
             self.client.will_set(self.availability_topic, "offline", retain=True)
 
             # Listen for commands
-            self.client.subscribe(self.command_topic_path)
+            self.client.subscribe(self.command_topic_path_panel)
 
             # Subscribe to HA MQTT integration status to detect HA restarts
             self.client.subscribe(f"{self.topic_root}/status")
@@ -151,7 +155,7 @@ class MQTTClient(object):
             "code_arm_required": False,
             "code_disarm_required": False,
             "code_trigger_required": False,
-            "~": f"{self.topic_prefix}/{partition.unique_name}",
+            "~": f"{self.topic_prefix_panel}/{partition.unique_name}",
             "availability_topic": self.availability_topic,
             "payload_available": "online",
             "payload_not_available": "offline",
@@ -160,10 +164,11 @@ class MQTTClient(object):
             "json_attributes_topic": "~/attributes",
             "retain": True,
         }
-        config_topic = f"{self.topic_prefix}/{partition.unique_name}/config"
+        config_topic = f"{self.topic_prefix_panel}/{partition.unique_name}/config"
         self.client.publish(
             config_topic, json.dumps(partition_config), qos=1, retain=True
         )
+        logger.debug(f"Published Partition {partition.index} config.")
 
     def publish_zone_config(self, zone: Zone) -> None:
         # The zone config defines three entities for the zone:
@@ -172,64 +177,71 @@ class MQTTClient(object):
         # 3. A binary sensor for the zone's trouble status
         zone_config_bypass = {
             "name": f"{zone.name} Bypass",
-            "device_class": "sensor",
+            "device_class": "safety",
             "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_bypass",
             "device": {
                 "name": zone.name,
-                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}_bypass"],
+                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}"],
                 "manufacturer": "Caddx",
                 "model": "NX8E",
             },
             "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
-            "~": f"{self.topic_prefix}/{zone.unique_name}",
-            "state_topic": "~/state",
-            "state_template": "{{ value_json.bypassed }}",
+            "state_topic": f"{self.topic_prefix_zones}/{zone.unique_name}/state",
+            "value_template": "{{ value_json.bypassed }}",
             "availability_topic": self.availability_topic,
             "payload_available": "online",
             "payload_not_available": "offline",
             "retain": True,
         }
+        config_topic = f"{self.topic_prefix_zones}/{zone.unique_name}_bypass/config"
+        self.client.publish(
+            config_topic, json.dumps(zone_config_bypass), qos=1, retain=True
+        )
         zone_config_faulted = {
             "name": f"{zone.name} Faulted",
-            "device_class": "sensor",
+            "device_class": "safety",
             "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_faulted",
             "device": {
                 "name": zone.name,
-                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}_faulted"],
+                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}"],
                 "manufacturer": "Caddx",
                 "model": "NX8E",
             },
             "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
-            "~": f"{self.topic_prefix}/{zone.unique_name}",
-            "state_topic": "~/state",
-            "state_template": "{{ value_json.faulted }}",
+            "state_topic": f"{self.topic_prefix_zones}/{zone.unique_name}/state",
+            "value_template": "{{ value_json.faulted }}",
             "availability_topic": self.availability_topic,
             "payload_available": "online",
             "payload_not_available": "offline",
             "retain": True,
         }
+        config_topic = f"{self.topic_prefix_zones}/{zone.unique_name}_faulted/config"
+        self.client.publish(
+            config_topic, json.dumps(zone_config_faulted), qos=1, retain=True
+        )
         zone_config_trouble = {
             "name": f"{zone.name} Trouble",
             "device_class": "problem",
             "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_trouble",
             "device": {
                 "name": zone.name,
-                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}_trouble"],
+                "identifiers": [f"{self.panel_unique_id}_{zone.unique_name}"],
                 "manufacturer": "Caddx",
                 "model": "NX8E",
             },
             "origin": {"name": "Caddx MQTT Controller", "sw_version": "1.0.0"},
-            "~": f"{self.topic_prefix}/{zone.unique_name}",
-            "state_topic": "~/state",
-            "state_template": "{{ value_json.trouble }}",
+            "state_topic": f"{self.topic_prefix_zones}/{zone.unique_name}/state",
+            "value_template": "{{ value_json.trouble }}",
             "availability_topic": self.availability_topic,
             "payload_available": "online",
             "payload_not_available": "offline",
             "retain": True,
         }
-        zone_config = [zone_config_bypass, zone_config_faulted, zone_config_trouble]
-        config_topic = f"{self.topic_prefix}/{zone.unique_name}/config"
-        self.client.publish(config_topic, json.dumps(zone_config), qos=1, retain=True)
+        config_topic = f"{self.topic_prefix_zones}/{zone.unique_name}_trouble/config"
+        self.client.publish(
+            config_topic, json.dumps(zone_config_trouble), qos=1, retain=True
+        )
+        logger.debug(f"Published Zone {zone.index} config.")
 
     def publish_zone_configs(self) -> None:
         zones = Zone.get_all_zones()
@@ -249,8 +261,9 @@ class MQTTClient(object):
             "faulted": "ON" if zone.is_faulted else "OFF",
             "trouble": "ON" if zone.is_trouble else "OFF",
         }
-        state_topic = f"{self.topic_prefix}/{zone.unique_name}/state"
+        state_topic = f"{self.topic_prefix_zones}/{zone.unique_name}/state"
         self.client.publish(state_topic, json.dumps(state), qos=1, retain=True)
+        logger.debug(f"Published Zone {zone.index} state.")
 
     def publish_partition_states(self) -> None:
         partitions = Partition.get_all_partitions()
@@ -260,5 +273,6 @@ class MQTTClient(object):
     def publish_partition_state(self, partition: Partition) -> None:
         state = partition.state
         if state is not None:
-            state_topic = f"{self.topic_prefix}/{partition.unique_name}/state"
+            state_topic = f"{self.topic_prefix_panel}/{partition.unique_name}/state"
             self.client.publish(state_topic, state.value[0], qos=1, retain=True)
+        logger.debug(f"Published Partition {partition.index} state.")

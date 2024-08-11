@@ -68,7 +68,7 @@ class Zone(object):
     def __init__(self, index: int, name: str) -> None:
         self.index = index
         self.name = name
-        self.unique_name = f"zone_{(self.index + 1):03}"
+        self.unique_name = f"zone_{self.index :03}"
         self._partition_mask: int = 0
         self._condition_mask: int = 0
         self._type_mask: int = 0
