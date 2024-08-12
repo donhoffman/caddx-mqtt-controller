@@ -1,3 +1,4 @@
+import time
 from typing import List
 import json
 import logging
@@ -246,11 +247,13 @@ class MQTTClient(object):
     def publish_zone_configs(self) -> None:
         zones = Zone.get_all_zones()
         for zone in zones:
+            time.sleep(1)
             self.publish_zone_config(zone)
 
     def publish_zone_states(self) -> None:
         zones = Zone.get_all_zones()
         for zone in zones:
+            time.sleep(1)
             self.publish_zone_state(zone)
 
     def publish_zone_state(self, zone: Zone) -> None:
@@ -263,6 +266,7 @@ class MQTTClient(object):
         }
         state_topic = f"{self.topic_prefix_zones}/{zone.unique_name}/state"
         self.client.publish(state_topic, json.dumps(state), qos=1, retain=True)
+        zone.is_updated = False
         logger.debug(f"Published Zone {zone.index} state.")
 
     def publish_partition_states(self) -> None:

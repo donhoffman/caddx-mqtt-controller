@@ -563,9 +563,7 @@ class CaddxController:
         if len(message) != MessageValidLength[MessageType.ZoneStatusRsp]:
             logger.error("Invalid zone status message.")
             return
-        zone_index = (
-            int(message[1]) + 1
-        )  # Server zones start from 1.  Panel zones start from 0.
+        zone_index = int(message[1]) + 1
         if zone_index > self.number_zones and zone_index not in self.ignored_zones:
             logger.debug(
                 f"Zone index {zone_index} is out of range or ignored. Ignoring zone status."
@@ -576,12 +574,13 @@ class CaddxController:
             logger.error(f"Ignoring zone status. Unknown zone index: {zone_index}")
             return
         logger.debug(f"Got status for zone {zone_index} - {zone.name}.")
-        # Skip partition mask at [2:3]
         zone.set_masks(
             int.from_bytes(message[2:3], byteorder="little"),  # partition mask
             int.from_bytes(message[3:6], byteorder="little"),  # condition mask
             int.from_bytes(message[6:8], byteorder="little"),  # type mask
         )
+        if self.panel_synced:
+            self.mqtt_client.publish_zone_state(zone)
         return
 
     # noinspection PyMethodMayBeStatic
@@ -965,3 +964,5 @@ class CaddxController:
             if zone_number not in self.ignored_zones:
                 self._send_zone_name_req(zone_number)
                 self._send_zone_status_req(zone_number)
+            else:
+                logger.debug(f"Not requesting zone {zone_number}. Ignored")
