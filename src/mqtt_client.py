@@ -177,7 +177,7 @@ class MQTTClient(object):
         # 2. A binary sensor for the zone's fault status
         # 3. A binary sensor for the zone's trouble status
         zone_config_bypass = {
-            "name": f"{zone.name} Bypass",
+            "name": "Bypass",
             "device_class": "safety",
             "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_bypass",
             "device": {
@@ -199,7 +199,7 @@ class MQTTClient(object):
             config_topic, json.dumps(zone_config_bypass), qos=1, retain=True
         )
         zone_config_faulted = {
-            "name": f"{zone.name} Faulted",
+            "name": "Faulted",
             "device_class": "safety",
             "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_faulted",
             "device": {
@@ -221,7 +221,7 @@ class MQTTClient(object):
             config_topic, json.dumps(zone_config_faulted), qos=1, retain=True
         )
         zone_config_trouble = {
-            "name": f"{zone.name} Trouble",
+            "name": "Trouble",
             "device_class": "problem",
             "unique_id": f"{self.panel_unique_id}_{zone.unique_name}_trouble",
             "device": {
