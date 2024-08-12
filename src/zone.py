@@ -1,5 +1,8 @@
 from typing import Dict, Optional, ValuesView
 from enum import IntEnum
+import logging
+
+logger = logging.getLogger("app.zone")
 
 
 class ZoneTypeFlags(IntEnum):
@@ -109,3 +112,17 @@ class Zone(object):
         self._condition_mask = condition_mask
         self._type_mask = type_mask
         self.is_updated = True
+        self.debug_zone_status()
+
+    def debug_zone_status(self):
+        if logger.level > logging.DEBUG:
+            return
+        logger.debug(f"Zone {self.index} - {self.name}")
+        logger.debug("  Type mask: {self._type_mask:0>24b}")
+        for flag in ZoneTypeFlags:
+            if flag & self._type_mask:
+                logger.debug(f"    {flag.name} is set")
+        logger.debug("  Condition flags: {self._condition_mask:0>16b}")
+        for flag in ZoneConditionFlags:
+            if flag & self._condition_mask:
+                logger.debug(f"    {flag.name} is set")

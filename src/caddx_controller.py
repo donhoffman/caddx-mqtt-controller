@@ -966,3 +966,4 @@ class CaddxController:
                 self._send_zone_status_req(zone_number)
             else:
                 logger.debug(f"Not requesting zone {zone_number}. Ignored")
+        return
