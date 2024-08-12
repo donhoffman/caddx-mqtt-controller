@@ -106,11 +106,11 @@ class Zone(object):
         return bool(self._partition_mask & (1 << (partition.index - 1)))
 
     def set_masks(
-        self, partition_mask: int, condition_mask: int, type_mask: int
+        self, partition_mask: int, type_mask: int, condition_mask: int
     ) -> None:
         self._partition_mask = partition_mask
-        self._condition_mask = condition_mask
         self._type_mask = type_mask
+        self._condition_mask = condition_mask
         self.is_updated = True
         self.debug_zone_status()
 
@@ -118,11 +118,11 @@ class Zone(object):
         if logger.level > logging.DEBUG:
             return
         logger.debug(f"Zone {self.index} - {self.name}")
-        logger.debug("  Type mask: {self._type_mask:0>24b}")
+        logger.debug(f"  Type mask: {self._type_mask:0>24b}")
         for flag in ZoneTypeFlags:
             if flag & self._type_mask:
                 logger.debug(f"    {flag.name} is set")
-        logger.debug("  Condition flags: {self._condition_mask:0>16b}")
+        logger.debug(f"  Condition flags: {self._condition_mask:0>16b}")
         for flag in ZoneConditionFlags:
             if flag & self._condition_mask:
                 logger.debug(f"    {flag.name} is set")

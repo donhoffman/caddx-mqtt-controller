@@ -574,10 +574,13 @@ class CaddxController:
             logger.error(f"Ignoring zone status. Unknown zone index: {zone_index}")
             return
         logger.debug(f"Got status for zone {zone_index} - {zone.name}.")
+        partition_mask = int.from_bytes(message[2:3], byteorder="little")
+        type_mask = int.from_bytes(message[3:6], byteorder="little")
+        condition_mask = int.from_bytes(message[6:8], byteorder="little")
         zone.set_masks(
-            int.from_bytes(message[2:3], byteorder="little"),  # partition mask
-            int.from_bytes(message[3:6], byteorder="little"),  # condition mask
-            int.from_bytes(message[6:8], byteorder="little"),  # type mask
+            partition_mask=partition_mask,
+            type_mask=type_mask,
+            condition_mask=condition_mask,
         )
         if self.panel_synced:
             self.mqtt_client.publish_zone_state(zone)
