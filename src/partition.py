@@ -152,6 +152,8 @@ class Partition(object):
             self.condition_flags & PartitionConditionFlags.ReadyToForceArm
         ):
             return Partition.State.DISARMED
+        # There are a few conditions that don't fit neatly into the state model so this is a catch-all
+        return Partition.State.PENDING
 
     def log_condition(self, logger: Callable[[str], None]) -> None:
         logger(f"Partition {self.index} raw value: {self.condition_flags:0>12x}")
