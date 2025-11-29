@@ -158,3 +158,33 @@ Publishes MQTT discovery messages to `homeassistant/` topics:
 - Binary Sensors: Three per zone (bypass, faulted, trouble)
 
 All entities share common availability topic and go offline on disconnect.
+
+## Development Workflow
+
+### Code Review Process
+
+When fixing issues or adding features:
+
+1. **Before starting work**: Review REVIEW.md for known issues and priorities
+2. **During development**: Run tests frequently with `pytest` to catch regressions
+3. **After completing each item**: Update REVIEW.md to mark the item as completed with ✅ status
+4. **Before committing**:
+   - Ensure REVIEW.md is updated for all completed items
+   - Run full test suite: `pytest --cov=src`
+   - Run formatter: `black src/ tests/`
+   - Verify all tests pass
+
+### Updating REVIEW.md
+
+When marking an item as complete in REVIEW.md:
+
+```markdown
+### XX. **Issue Title** ✅ **COMPLETED**
+
+**Status:** ✅ **Completed YYYY-MM-DD**
+- Brief description of what was done
+- Any relevant details or notes
+- Links to related commits if helpful
+```
+
+This ensures we track progress and maintain a clear history of improvements.
