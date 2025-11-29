@@ -96,7 +96,7 @@ def main() -> int:
         "--user",
         type=str,
         help="Default user number to use for arming and disarming",
-        default=os.getenv("CODE", "1"),
+        default=os.getenv("USER", "1"),
     )
     parser.add_argument(
         "--ignored-zones",

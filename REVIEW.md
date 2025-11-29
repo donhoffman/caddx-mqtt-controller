@@ -16,7 +16,7 @@ This codebase implements a serial-to-MQTT bridge for Caddx NX8E alarm panels wit
 
 ## Critical Issues 🔴
 
-### 1. **Bug: Incorrect Environment Variable Reference**
+### 1. **Bug: Incorrect Environment Variable Reference** ✅ **COMPLETED**
 **Location:** `src/caddx-server.py:99`
 
 ```python
@@ -31,6 +31,11 @@ parser.add_argument(
 **Impact:** The `--user` argument defaults to the `CODE` environment variable instead of `USER`, meaning users cannot set default user via environment variable.
 
 **Fix:** Change to `default=os.getenv("USER", "1")`
+
+**Status:** ✅ **Completed 2025-11-29**
+- Changed `os.getenv("CODE", "1")` to `os.getenv("USER", "1")` in src/caddx-server.py:99
+- All 126 tests still passing after fix
+- Users can now properly set the default user number via USER environment variable
 
 ---
 
