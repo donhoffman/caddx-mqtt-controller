@@ -9,20 +9,51 @@ A Python-based MQTT bridge that interfaces Caddx alarm panels (specifically NX8E
 ## Development Commands
 
 ```bash
-# Install dependencies
+# Install production dependencies
 pip install -r requirements.txt
+
+# Install development dependencies (includes pytest, black, mypy)
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest
+
+# Run tests with coverage report
+pytest --cov=src --cov-report=html --cov-report=term
+
+# Format code
+black src/ tests/
+
+# Type check (optional)
+mypy src/
 
 # Run the server (requires environment variables or args)
 python src/caddx-server.py
 
-# Format code
-black src/
-
-# Build Docker image
+# Build Docker image locally
 docker build -t caddx-mqtt-controller .
 
 # Run via Docker Compose
 docker compose up -d
+
+# Pull from GitHub Container Registry
+docker pull ghcr.io/<username>/caddx-mqtt-controller:latest
+```
+
+## Release Process
+
+Docker images are automatically built and published to GitHub Container Registry when version tags are pushed:
+
+```bash
+# Tag a release
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The GitHub Actions workflow (`.github/workflows/docker-publish.yml`) will:
+- Build multi-platform images (linux/amd64, linux/arm64, linux/arm/v7)
+- Push to `ghcr.io/<username>/caddx-mqtt-controller`
+- Create tags: `<version>`, `<major>.<minor>`, `<major>`, and `latest`
 ```
 
 ## Architecture

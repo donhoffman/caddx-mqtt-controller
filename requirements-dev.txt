@@ -1,0 +1,16 @@
+# Development and testing dependencies
+# Install with: pip install -r requirements-dev.txt
+
+# First, install production requirements
+-r requirements.txt
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+
+# Code formatting and linting
+black==24.4.2
+
+# Type checking (optional but recommended)
+mypy==1.13.0
