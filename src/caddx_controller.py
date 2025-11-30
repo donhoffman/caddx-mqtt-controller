@@ -380,7 +380,7 @@ class CaddxController:
     def _calculate_fletcher16(data: bytearray) -> int:
         """
         Calculate the Fletcher-16 checksum for the given data.
-        :param data: The data to be checksummed.
+        :param data: The data to be checked.
         :return: 16-bit checksum.
         """
         sum1 = int(0)
