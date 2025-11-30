@@ -239,7 +239,7 @@ class CaddxController:
         self.number_zones = number_zones
         self.default_code = default_code
         self.default_user = default_user
-        self.mqtt_client: Optional[MQTTClient] = None
+        self.mqtt_client: MQTTClient = None  # type: ignore  # Set in control_loop()
         self._command_queue = None
         self.conn = None
         self.panel_synced = False
@@ -254,7 +254,7 @@ class CaddxController:
         self.conn = serial.Serial(serial_path, baudrate=baud_rate, timeout=2)
         logger.info(f"Opened serial connection at '{serial_path}'. Mode is binary")
 
-    def control_loop(self, mqtt_client: Optional[MQTTClient]) -> int:
+    def control_loop(self, mqtt_client: MQTTClient) -> int:
         logger.debug("Starting controller run loop.")
         self.mqtt_client = mqtt_client
         self._command_queue = queue.Queue()

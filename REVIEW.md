@@ -151,7 +151,7 @@ def _send_partition_status_req(self, partition: int):
 
 ---
 
-### 7. **Race Condition: MQTT Client Reference**
+### 7. **Race Condition: MQTT Client Reference** ✅ **COMPLETED**
 **Location:** `src/caddx_controller.py:257-259`, `586-587`, `642`
 
 ```python
@@ -165,6 +165,16 @@ def control_loop(self, mqtt_client: Optional[MQTTClient]) -> int:
 **Impact:** `mqtt_client` is Optional but code assumes it's non-None when `panel_synced=True`. If MQTT fails to initialize but panel syncs successfully, this will crash with AttributeError.
 
 **Recommendation:** Add null checks before calling `mqtt_client` methods, or make it non-optional.
+
+**Status:** ✅ **Completed 2025-11-30**
+- Changed `mqtt_client` parameter from `Optional[MQTTClient]` to `MQTTClient` (non-optional)
+- Changed `self.mqtt_client` type hint from `Optional[MQTTClient]` to `MQTTClient`
+- Analysis confirmed mqtt_client is never None in practice:
+  - Always created before control_loop() is called (caddx-server.py exits if creation fails)
+  - Never set to None anywhere in the codebase
+  - MQTT disconnections don't make the object None, only affect connection state
+- Kept defensive null check in finally block for safety
+- All 126 tests still passing after fix
 
 ---
 
