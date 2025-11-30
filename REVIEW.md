@@ -109,7 +109,7 @@ parser.add_argument(
 
 ## High Priority Issues 🟠
 
-### 5. **Incomplete Zone Snapshot Handler**
+### 5. **Incomplete Zone Snapshot Handler** ⚠️ **ACKNOWLEDGED**
 **Location:** `src/caddx_controller.py:594-611`
 
 ```python
@@ -123,6 +123,12 @@ def _update_zone_attr(z: Zone, _mask: int, _start_bit: int) -> None:
 **Impact:** Zone snapshot messages are received but not processed. This is likely a placeholder that was never completed. The system relies solely on individual zone status messages.
 
 **Recommendation:** Either implement this feature or remove the handler and document that zone snapshots aren't supported.
+
+**Status:** ⚠️ **Acknowledged - Not Implementing** 2025-11-30
+- Added INFO level log message when zone snapshot messages are received
+- Message: "Received zone snapshot message - not currently processed, relying on individual zone status updates"
+- Handler skeleton retained for potential future implementation
+- System functions correctly using individual zone status messages
 
 ---
 
