@@ -1,7 +1,6 @@
 """Tests for MQTT topic generation and message formatting."""
 import pytest
 import json
-from unittest.mock import Mock, MagicMock, patch
 from partition import Partition
 from zone import Zone
 

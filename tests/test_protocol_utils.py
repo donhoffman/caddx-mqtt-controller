@@ -100,7 +100,7 @@ class TestFletcher16Checksum:
 
     def test_known_value_from_protocol(self):
         # Test with actual message from protocol
-        # Interface Config Request: length=0x01, msgtype=0x21
+        # Interface Config Request: length=0x01, msg type=0x21
         data = bytearray([0x01, 0x21])
         result = CaddxController._calculate_fletcher16(data)
         # This should match the checksum in actual protocol messages

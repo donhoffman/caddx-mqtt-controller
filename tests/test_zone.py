@@ -48,7 +48,7 @@ class TestZoneCreation:
 
     def test_zone_duplicate_unique_name(self):
         """Test that duplicate unique names are prevented."""
-        zone1 = Zone(1, "First")
+        _zone1 = Zone(1, "First")
         # Creating a second zone with index 1 should fail before unique name check
         # But we can test the assertion exists
         with pytest.raises(AssertionError):
