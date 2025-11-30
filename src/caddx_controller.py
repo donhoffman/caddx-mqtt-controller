@@ -836,7 +836,7 @@ class CaddxController:
 
     def _send_partition_status_req(self, partition: int):
         logger.debug(f"Queuing partition {partition} status request.")
-        assert 1 <= partition <= 7
+        assert 1 <= partition <= 8
         partition = partition - 1
         command = Command(
             MessageType.PartitionStatusReq,

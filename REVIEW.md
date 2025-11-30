@@ -132,7 +132,7 @@ def _update_zone_attr(z: Zone, _mask: int, _start_bit: int) -> None:
 
 ---
 
-### 6. **Missing Partition Limit Check**
+### 6. **Missing Partition Limit Check** ✅ **COMPLETED**
 **Location:** `src/caddx_controller.py:833`
 
 ```python
@@ -143,6 +143,11 @@ def _send_partition_status_req(self, partition: int):
 **Impact:** Partition 8 cannot be queried even though the system claims to support 1-8 partitions. The assertion will fail if partition 8 is active.
 
 **Fix:** Change to `assert 1 <= partition <= 8`
+
+**Status:** ✅ **Completed 2025-11-30**
+- Changed assertion from `assert 1 <= partition <= 7` to `assert 1 <= partition <= 8`
+- System now correctly supports all 8 partitions as documented
+- All 126 tests still passing after fix
 
 ---
 
