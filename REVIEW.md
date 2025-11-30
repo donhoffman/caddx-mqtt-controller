@@ -65,7 +65,7 @@ logger.debug(f"Sending message: {message_stuffed.hex()}")
 
 ---
 
-### 3. **Bug: Commented Out Exception Handling**
+### 3. **Bug: Commented Out Exception Handling** ✅ **COMPLETED**
 **Location:** `src/caddx_controller.py:309-311`
 
 ```python
@@ -77,6 +77,13 @@ logger.debug(f"Sending message: {message_stuffed.hex()}")
 **Impact:** Unhandled exceptions in the control loop will crash the application without cleanup. The serial port may be left in an invalid state, and MQTT won't publish offline status.
 
 **Recommendation:** Uncomment and improve exception handling, or document why this is intentionally disabled.
+
+**Status:** ✅ **Completed 2025-11-30**
+- Uncommented exception handling to catch all unexpected exceptions
+- Added `publish_offline()` call in `finally` block to ensure MQTT offline status is published for ALL exit paths (normal shutdown, keyboard interrupt, and exceptions)
+- This guarantees Home Assistant will be notified that the controller is offline regardless of how the loop exits
+- Return code properly set to 1 on exception to indicate error to calling process
+- All 126 tests still passing after fix
 
 ---
 

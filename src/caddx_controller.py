@@ -306,10 +306,14 @@ class CaddxController:
             logger.debug("Received keyboard interrupt. Normal stop")
         except StopThread:
             logger.debug("Normal stop.")
-        # except Exception as e:
-        #     logger.error(f"Caddx controller received exception: {e}")
-        #     rc = 1
+        except Exception as e:
+            logger.error(f"Caddx controller received exception: {e}")
+            rc = 1
         finally:
+            # Publish offline status before cleanup
+            if mqtt_client is not None:
+                mqtt_client.publish_offline()
+            # Clean up serial connection and command queue
             self.conn.close()
             self.conn = None
             while not self._command_queue.empty():

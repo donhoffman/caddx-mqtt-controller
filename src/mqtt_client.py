@@ -50,6 +50,11 @@ class MQTTClient(object):
         self.client.on_message = self.on_message
         self.client.on_disconnect = self.on_disconnect
         self.client.reconnect_delay_set(self.timeout_seconds)
+
+        # Set Last Will and Testament BEFORE connecting
+        # This ensures the broker will publish "offline" if we disconnect unexpectedly
+        self.client.will_set(self.availability_topic, "offline", qos=1, retain=True)
+
         logger.info(f"Connecting to MQTT server at {host}:{port}.")
 
         try:
@@ -64,9 +69,9 @@ class MQTTClient(object):
             self.connected = True
             logger.info("Connected to MQTT server.")
 
-            # Publish our initial availability to HA MQTT integration
+            # Publish offline status until panel sync completes
+            # (publish_online() will be called after sync in caddx_controller.py)
             self.publish_offline()
-            self.client.will_set(self.availability_topic, "offline", retain=True)
 
             # Listen for commands
             self.client.subscribe(self.command_topic_path_panel)
