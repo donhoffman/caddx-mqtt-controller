@@ -39,7 +39,7 @@ parser.add_argument(
 
 ---
 
-### 2. **Security: Secrets Exposed in Logs**
+### 2. **Security: Secrets Exposed in Logs** ⚠️ **WON'T FIX**
 **Location:** `src/caddx_controller.py:791`, `src/caddx_controller.py:895`
 
 ```python
@@ -53,6 +53,15 @@ logger.debug(f"Sending message: {message_stuffed.hex()}")
 - Sanitize sensitive data before logging (mask PIN bytes)
 - Add warning in documentation about debug logging security implications
 - Consider separate log level for protocol debugging vs application debugging
+
+**Status:** ⚠️ **Won't Fix - By Design**
+**Decision Date:** 2025-11-29
+**Rationale:**
+- Debug logging is only enabled when actively troubleshooting protocol issues
+- Full message visibility is essential for debugging serial communication problems
+- Users enabling DEBUG log level should be aware they're exposing sensitive data
+- Production deployments should use INFO or WARNING log levels
+- **Recommendation:** Document in README that DEBUG mode exposes sensitive data and should only be used in secure environments
 
 ---
 
