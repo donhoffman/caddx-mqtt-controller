@@ -87,7 +87,7 @@ logger.debug(f"Sending message: {message_stuffed.hex()}")
 
 ---
 
-### 4. **Type Mismatch: Baud Rate**
+### 4. **Type Mismatch: Baud Rate** ✅ **COMPLETED**
 **Location:** `src/caddx-server.py:42`
 
 ```python
@@ -99,6 +99,11 @@ parser.add_argument(
 **Impact:** Baud rate is declared as `type=str` but should be `type=int`. This works by accident because pyserial accepts string representations, but it's inconsistent and could cause issues.
 
 **Fix:** Change to `type=int`
+
+**Status:** ✅ **Completed 2025-11-30**
+- Changed `type=str` to `type=int` for the `--baud` argument in src/caddx-server.py:42
+- Baud rate is now properly typed as integer, matching its usage
+- All 126 tests still passing after fix
 
 ---
 

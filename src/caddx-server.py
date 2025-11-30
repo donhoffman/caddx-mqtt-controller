@@ -39,7 +39,7 @@ def main() -> int:
         "--serial", type=str, help="Serial port", default=os.getenv("SERIAL", None)
     )
     parser.add_argument(
-        "--baud", type=str, help="Serial baud rate", default=os.getenv("BAUD", 38400)
+        "--baud", type=int, help="Serial baud rate", default=os.getenv("BAUD", 38400)
     )
     parser.add_argument(
         "--max-zones", type=int, help="Max zones", default=os.getenv("MAX_ZONES", 8)
