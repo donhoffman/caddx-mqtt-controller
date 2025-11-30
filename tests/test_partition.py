@@ -113,7 +113,7 @@ class TestPartitionStateArmed:
     def test_armed_home_with_entryguard(self):
         """Test ARMED_HOME with Armed + Entryguard flags."""
         self.partition.condition_flags = (
-            PartitionConditionFlags.Armed | PartitionConditionFlags.Entryguard
+            PartitionConditionFlags.Armed | PartitionConditionFlags.EntryGuard
         )
         assert self.partition.state == Partition.State.ARMED_HOME
 
@@ -221,7 +221,7 @@ class TestPartitionStatePriority:
     def test_entry_guard_sets_armed_home(self):
         """Entryguard should set ARMED_HOME not ARMED_AWAY."""
         self.partition.condition_flags = (
-            PartitionConditionFlags.Armed | PartitionConditionFlags.Entryguard
+            PartitionConditionFlags.Armed | PartitionConditionFlags.EntryGuard
         )
         assert self.partition.state == Partition.State.ARMED_HOME
         assert self.partition.state != Partition.State.ARMED_AWAY

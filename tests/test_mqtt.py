@@ -314,7 +314,7 @@ class TestPartitionStatePayload:
         from partition import PartitionConditionFlags
 
         self.partition.condition_flags = (
-            PartitionConditionFlags.Armed | PartitionConditionFlags.Entryguard
+            PartitionConditionFlags.Armed | PartitionConditionFlags.EntryGuard
         )
         state_value = self.partition.state.value[0]
         assert state_value == "armed_home"

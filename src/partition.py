@@ -35,8 +35,8 @@ class PartitionConditionFlags(IntEnum):
     CancelPending = 0b_00000000_00000000_00000000_00000000_10000000_00000000
     # Silent exit enabled.
     SilentExitEnabled = 0b_00000000_00000000_00000000_00000010_00000000_00000000
-    # Entryguard.
-    Entryguard = 0b_00000000_00000000_00000000_00000100_00000000_00000000
+    # Entry Guard.
+    EntryGuard = 0b_00000000_00000000_00000000_00000100_00000000_00000000
     # Chime mode.
     ChimeMode = 0b_00000000_00000000_00000000_00001000_00000000_00000000
     # Entry.
@@ -144,7 +144,7 @@ class Partition(object):
                 return Partition.State.ARMING
             if self.condition_flags & PartitionConditionFlags.Entry:
                 return Partition.State.PENDING
-            if self.condition_flags & PartitionConditionFlags.Entryguard:
+            if self.condition_flags & PartitionConditionFlags.EntryGuard:
                 return Partition.State.ARMED_HOME
             else:
                 return Partition.State.ARMED_AWAY
