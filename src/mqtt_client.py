@@ -25,8 +25,10 @@ class MQTTClient(object):
         _tls_insecure: bool = False,
         version: str = "Unknown",
         timeout_seconds: int = 60,
+        qos: int = 1,
     ):
         self.software_version = version
+        self.qos = qos
         self.topic_root = topic_root
         self.panel_unique_id = panel_unique_id
         self.panel_name = panel_name
@@ -53,7 +55,7 @@ class MQTTClient(object):
 
         # Set Last Will and Testament BEFORE connecting
         # This ensures the broker will publish "offline" if we disconnect unexpectedly
-        self.client.will_set(self.availability_topic, "offline", qos=1, retain=True)
+        self.client.will_set(self.availability_topic, "offline", qos=self.qos, retain=True)
 
         logger.info(f"Connecting to MQTT server at {host}:{port}.")
 
@@ -131,12 +133,12 @@ class MQTTClient(object):
 
     def publish_online(self) -> None:
         self.client.publish(
-            self.availability_topic, payload="online", qos=1, retain=True
+            self.availability_topic, payload="online", qos=self.qos, retain=True
         )
 
     def publish_offline(self) -> None:
         self.client.publish(
-            self.availability_topic, payload="offline", qos=1, retain=True
+            self.availability_topic, payload="offline", qos=self.qos, retain=True
         )
 
     def publish_configs(self) -> None:
@@ -172,7 +174,7 @@ class MQTTClient(object):
         }
         config_topic = f"{self.topic_prefix_panel}/{partition.unique_name}/config"
         self.client.publish(
-            config_topic, json.dumps(partition_config), qos=1, retain=True
+            config_topic, json.dumps(partition_config), qos=self.qos, retain=True
         )
         logger.debug(f"Published Partition {partition.index} config.")
 
@@ -201,7 +203,7 @@ class MQTTClient(object):
         }
         config_topic = f"{self.topic_prefix_zones}/{zone.unique_name}_bypass/config"
         self.client.publish(
-            config_topic, json.dumps(zone_config_bypass), qos=1, retain=True
+            config_topic, json.dumps(zone_config_bypass), qos=self.qos, retain=True
         )
         zone_config_faulted = {
             "name": "Faulted",
@@ -223,7 +225,7 @@ class MQTTClient(object):
         }
         config_topic = f"{self.topic_prefix_zones}/{zone.unique_name}_faulted/config"
         self.client.publish(
-            config_topic, json.dumps(zone_config_faulted), qos=1, retain=True
+            config_topic, json.dumps(zone_config_faulted), qos=self.qos, retain=True
         )
         zone_config_trouble = {
             "name": "Trouble",
@@ -245,7 +247,7 @@ class MQTTClient(object):
         }
         config_topic = f"{self.topic_prefix_zones}/{zone.unique_name}_trouble/config"
         self.client.publish(
-            config_topic, json.dumps(zone_config_trouble), qos=1, retain=True
+            config_topic, json.dumps(zone_config_trouble), qos=self.qos, retain=True
         )
         logger.debug(f"Published Zone {zone.index} config.")
 
@@ -270,7 +272,7 @@ class MQTTClient(object):
             "trouble": "ON" if zone.is_trouble else "OFF",
         }
         state_topic = f"{self.topic_prefix_zones}/{zone.unique_name}/state"
-        self.client.publish(state_topic, json.dumps(state), qos=1, retain=True)
+        self.client.publish(state_topic, json.dumps(state), qos=self.qos, retain=True)
         zone.is_updated = False
         logger.debug(f"Published Zone {zone.index} state.")
 
@@ -283,5 +285,5 @@ class MQTTClient(object):
         state = partition.state
         if state is not None:
             state_topic = f"{self.topic_prefix_panel}/{partition.unique_name}/state"
-            self.client.publish(state_topic, state.value[0], qos=1, retain=True)
+            self.client.publish(state_topic, state.value[0], qos=self.qos, retain=True)
         logger.debug(f"Published Partition {partition.index} state.")

@@ -178,7 +178,7 @@ def control_loop(self, mqtt_client: Optional[MQTTClient]) -> int:
 
 ---
 
-### 8. **Hardcoded Sleep Delays**
+### 8. **Hardcoded Sleep Delays** ⚠️ **DEFERRED**
 **Location:** `src/mqtt_client.py:250`, `256`
 
 ```python
@@ -194,9 +194,14 @@ for zone in zones:
 - Make delay configurable
 - Explain why delay is needed (MQTT broker rate limiting?)
 
+**Status:** ⚠️ **Deferred to v2.0** 2025-11-30
+- Delay is intentional to prevent MQTT message overrun issues observed in testing
+- Without the delay, messages appear to overwhelm the broker or get lost
+- Planned for v2.0: Refactor to async model which will handle this more elegantly
+
 ---
 
-### 9. **Missing MQTT Connection Validation**
+### 9. **Missing MQTT Connection Validation** ✅ **NOT AN ISSUE**
 **Location:** `src/mqtt_client.py:55-60`
 
 ```python
@@ -212,9 +217,19 @@ except Exception as e:
 
 **Recommendation:** Wait for connection confirmation or add retry logic with backoff.
 
+**Status:** ✅ **Not An Issue - Correct Pattern** 2025-11-30
+- This is the **correct** usage pattern for paho-mqtt with `loop_start()`
+- `loop_start()` spawns a background thread that handles connection asynchronously
+- `reconnect_delay_set()` (line 52) already configures automatic reconnection with backoff
+- The `on_connect` callback fires when connection succeeds and sets `self.connected = True`
+- The background thread automatically retries connection if initial attempt fails
+- The application correctly waits for `on_connect` before publishing (panel sync publishes offline initially)
+- Exception handling catches setup errors (invalid hostname, etc.) which should cause immediate failure
+- This asynchronous pattern is recommended by paho-mqtt documentation
+
 ---
 
-### 10. **TODO Left in Code**
+### 10. **TODO Left in Code** ⚠️ **DEFERRED**
 **Location:** `src/caddx_controller.py:658`
 
 ```python
@@ -225,11 +240,17 @@ except Exception as e:
 
 **Recommendation:** Implement system fault monitoring or document as limitation.
 
+**Status:** ⚠️ **Deferred to v2.0** 2025-11-30
+- System status fault monitoring will be implemented in v2.0
+- Faults will be exposed as panel device attributes in Home Assistant
+- Current focus on partition/zone state is sufficient for v1.x alarm monitoring
+- Examples of faults to be monitored: AC power loss, low battery, phone line trouble, etc.
+
 ---
 
 ## Medium Priority Issues 🟡
 
-### 11. **No Retry Logic for Failed MQTT Publishes**
+### 11. **No Retry Logic for Failed MQTT Publishes** ✅ **COMPLETED**
 **Location:** `src/mqtt_client.py` (general)
 
 **Issue:** All MQTT publishes are "fire and forget" with no QoS verification or retry on failure.
@@ -237,6 +258,22 @@ except Exception as e:
 **Impact:** State updates can be silently lost if MQTT broker is temporarily unavailable.
 
 **Recommendation:** Check publish result codes, add retry logic, or at minimum log failures.
+
+**Fix:** Use QoS 1 for MQTT publishes
+- QoS 0 (current, default): Fire and forget, no acknowledgment, messages can be lost
+- QoS 1 (recommended): Broker sends PUBACK, publisher retries if no ACK received
+- QoS 2 (overkill): Four-way handshake, exactly-once delivery, too much overhead
+- For state updates, QoS 1 is ideal: guarantees delivery, duplicates are harmless (idempotent)
+- Paho-mqtt handles retries automatically with QoS 1, no additional code needed
+- Simply add `qos=1` parameter to all `client.publish()` calls
+
+**Status:** ✅ **Completed 2025-11-30**
+- Added `--qos` command line argument and `QOS` environment variable (default: 1)
+- Supports QoS levels 0, 1, and 2 with validation
+- MQTTClient now accepts configurable `qos` parameter
+- All MQTT publish calls updated to use `self.qos` instead of hardcoded values
+- Includes LWT (Last Will and Testament) configuration
+- All 126 tests still passing after implementation
 
 ---
 

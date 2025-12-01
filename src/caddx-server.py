@@ -104,6 +104,13 @@ def main() -> int:
         help="Comma separated list of zones to ignore",
         default=os.getenv("IGNORED_ZONES", None),
     )
+    parser.add_argument(
+        "--qos",
+        type=int,
+        choices=[0, 1, 2],
+        help="MQTT QoS level for publishing messages (0=at most once, 1=at least once, 2=exactly once)",
+        default=int(os.getenv("QOS", "1")),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
@@ -141,6 +148,7 @@ def main() -> int:
             args.panel_unique_id,
             args.panel_name,
             version=VERSION,
+            qos=args.qos,
         )
     except Exception as e:
         logger.error(f"Failed to initialize Caddx MQTT Client: {e}")
