@@ -44,7 +44,7 @@ class MQTTClient(object):
         self.availability_topic = f"{self.topic_prefix_panel}/availability"
         self.caddx_ctrl = caddx_ctrl
         self.timeout_seconds = timeout_seconds
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
         self.connected = False
 
         self.client.username_pw_set(user, password)
