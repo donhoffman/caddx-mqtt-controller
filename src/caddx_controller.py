@@ -13,6 +13,11 @@ from partition import Partition
 
 logger = logging.getLogger("app.caddx_controller")
 
+# Configuration constants
+SERIAL_POLL_INTERVAL_SECONDS = 0.05  # Interval between serial port polls
+REPUBLISH_INTERVAL_MINUTES = 60  # How often to republish all states to MQTT
+ACK_DELAY_SECONDS = 0.25  # Delay before sending ACK message
+
 
 def get_nth_bit(num: int, n: int) -> int:
     return (num >> n) & 1
@@ -306,7 +311,7 @@ class CaddxController:
         self.conn = None
         self.panel_synced = False
         self.read_timeout = 2.0
-        self.sleep_between_polls = 0.05
+        self.sleep_between_polls = SERIAL_POLL_INTERVAL_SECONDS
         self.panel_firmware: Optional[str] = None
         self.panel_id: Optional[int] = None
         self.partition_mask: Optional[int] = None
@@ -352,11 +357,11 @@ class CaddxController:
                     mqtt_client.publish_partition_states()
                     mqtt_client.publish_zone_states()
                     next_panel_update = datetime.datetime.now() + datetime.timedelta(
-                        minutes=60
+                        minutes=REPUBLISH_INTERVAL_MINUTES
                     )
                 elif datetime.datetime.now() >= next_panel_update:
                     next_panel_update = datetime.datetime.now() + datetime.timedelta(
-                        minutes=60
+                        minutes=REPUBLISH_INTERVAL_MINUTES
                     )
                     mqtt_client.publish_partition_states()
                     mqtt_client.publish_zone_states()
@@ -866,7 +871,7 @@ class CaddxController:
         return
 
     def _send_direct_ack(self):
-        time.sleep(0.25)
+        time.sleep(ACK_DELAY_SECONDS)
         self._send_direct(MessageType.ACK, None)
 
     def _send_direct_nack(self):

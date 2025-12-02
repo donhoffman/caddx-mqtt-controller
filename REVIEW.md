@@ -475,7 +475,7 @@ def _read_message(self, wait: bool = True) -> Optional[bytearray]:
 
 ---
 
-### 20. **Magic Numbers**
+### 20. **Magic Numbers** ✅ **COMPLETED**
 **Location:** Various
 
 Examples:
@@ -484,6 +484,20 @@ Examples:
 - `0.25` - ACK delay (caddx_controller.py:796)
 
 **Recommendation:** Extract to named constants at module level.
+
+**Status:** ✅ **Completed 2025-12-02**
+- Added three configuration constants at module level in caddx_controller.py (lines 17-19):
+  * `SERIAL_POLL_INTERVAL_SECONDS = 0.05` - Interval between serial port polls
+  * `REPUBLISH_INTERVAL_MINUTES = 60` - How often to republish all states to MQTT
+  * `ACK_DELAY_SECONDS = 0.25` - Delay before sending ACK message
+- Replaced all magic numbers with named constants:
+  * Line 314: `self.sleep_between_polls = SERIAL_POLL_INTERVAL_SECONDS`
+  * Lines 360, 364: `datetime.timedelta(minutes=REPUBLISH_INTERVAL_MINUTES)`
+  * Line 874: `time.sleep(ACK_DELAY_SECONDS)`
+- Constants include descriptive comments explaining their purpose
+- Code is now more maintainable and self-documenting
+- Easy to adjust timing parameters from a single location
+- All 152 tests passing after changes
 
 ---
 
