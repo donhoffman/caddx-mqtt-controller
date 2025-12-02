@@ -375,7 +375,7 @@ elif self.panel_synced:
 
 ---
 
-### 16. **Zone/Partition Index Off-by-One Confusion**
+### 16. **Zone/Partition Index Off-by-One Confusion** ✅ **COMPLETED**
 **Location:** Throughout codebase
 
 **Issue:** Panel uses 0-indexed zones/partitions, server uses 1-indexed. Conversion happens inconsistently:
@@ -385,6 +385,31 @@ elif self.panel_synced:
 **Risk:** Off-by-one errors are error-prone. The `& 0xFF` mask is unexplained (likely bounds check?).
 
 **Recommendation:** Create explicit conversion functions and document the indexing scheme clearly.
+
+**Status:** ✅ **Completed 2025-12-02**
+- Created four explicit conversion functions in caddx_controller.py (lines 34-93):
+  - `panel_zone_to_server(panel_zone: int) -> int` - converts panel zone index (0-7) to server zone index (1-8)
+  - `server_zone_to_panel(server_zone: int) -> int` - converts server zone index (1-8) to panel zone index (0-7)
+  - `panel_partition_to_server(panel_partition: int) -> int` - converts panel partition index (0-7) to server partition index (1-8)
+  - `server_partition_to_panel(server_partition: int) -> int` - converts server partition index (1-8) to panel partition index (0-7)
+- All functions include comprehensive docstrings explaining:
+  - The indexing scheme (panel uses 0-based, server uses 1-based)
+  - The purpose of the `& 0xFF` mask (ensures value fits in a single byte for protocol)
+  - Parameter and return value ranges
+- Replaced all inline conversions throughout caddx_controller.py with function calls:
+  - `_process_zone_name_rsp()` - line 605
+  - `_process_zone_status_rsp()` - line 630
+  - `_process_partition_status_rsp()` - line 689
+  - `_send_zone_name_req()` - line 884
+  - `_send_zone_status_req()` - line 894
+  - `_send_partition_status_req()` - line 905
+- Added 18 comprehensive tests in tests/test_protocol_utils.py covering:
+  - Zone index conversions (first/last/middle zones, masking, round-trip conversions)
+  - Partition index conversions (first/last/middle partitions, masking, round-trip conversions)
+  - Edge cases (mask behavior with large values)
+- All 152 tests passing (134 original + 18 new tests)
+- Function names make conversion direction obvious and prevent off-by-one errors
+- Code is now much more maintainable and self-documenting
 
 ---
 

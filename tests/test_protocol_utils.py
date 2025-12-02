@@ -1,6 +1,14 @@
 """Tests for protocol utility functions."""
 import pytest
-from caddx_controller import get_nth_bit, pin_to_bytearray, CaddxController
+from caddx_controller import (
+    get_nth_bit,
+    pin_to_bytearray,
+    panel_zone_to_server,
+    server_zone_to_panel,
+    panel_partition_to_server,
+    server_partition_to_panel,
+    CaddxController,
+)
 
 
 class TestGetNthBit:
@@ -133,3 +141,87 @@ class TestFletcher16Checksum:
         result1 = CaddxController._calculate_fletcher16(data)
         result2 = CaddxController._calculate_fletcher16(data)
         assert result1 == result2
+
+
+class TestZoneIndexConversion:
+    """Tests for zone index conversion between panel (0-based) and server (1-based)."""
+
+    def test_panel_to_server_first_zone(self):
+        assert panel_zone_to_server(0) == 1
+
+    def test_panel_to_server_last_zone(self):
+        assert panel_zone_to_server(7) == 8
+
+    def test_panel_to_server_middle_zone(self):
+        assert panel_zone_to_server(3) == 4
+
+    def test_server_to_panel_first_zone(self):
+        assert server_zone_to_panel(1) == 0
+
+    def test_server_to_panel_last_zone(self):
+        assert server_zone_to_panel(8) == 7
+
+    def test_server_to_panel_middle_zone(self):
+        assert server_zone_to_panel(4) == 3
+
+    def test_server_to_panel_masking(self):
+        # Test that the 0xFF mask is applied
+        # Large values should be masked to fit in a byte
+        assert server_zone_to_panel(256) == 0xFF  # (256 - 1) & 0xFF = 255
+        assert server_zone_to_panel(257) == 0x00  # (257 - 1) & 0xFF = 0
+
+    def test_round_trip_panel_to_server_to_panel(self):
+        # Converting from panel to server and back should give the same value
+        for panel_zone in range(8):
+            server_zone = panel_zone_to_server(panel_zone)
+            result = server_zone_to_panel(server_zone)
+            assert result == panel_zone
+
+    def test_round_trip_server_to_panel_to_server(self):
+        # Converting from server to panel and back should give the same value (for valid ranges)
+        for server_zone in range(1, 9):
+            panel_zone = server_zone_to_panel(server_zone)
+            result = panel_zone_to_server(panel_zone)
+            assert result == server_zone
+
+
+class TestPartitionIndexConversion:
+    """Tests for partition index conversion between panel (0-based) and server (1-based)."""
+
+    def test_panel_to_server_first_partition(self):
+        assert panel_partition_to_server(0) == 1
+
+    def test_panel_to_server_last_partition(self):
+        assert panel_partition_to_server(7) == 8
+
+    def test_panel_to_server_middle_partition(self):
+        assert panel_partition_to_server(3) == 4
+
+    def test_server_to_panel_first_partition(self):
+        assert server_partition_to_panel(1) == 0
+
+    def test_server_to_panel_last_partition(self):
+        assert server_partition_to_panel(8) == 7
+
+    def test_server_to_panel_middle_partition(self):
+        assert server_partition_to_panel(4) == 3
+
+    def test_server_to_panel_masking(self):
+        # Test that the 0xFF mask is applied
+        # Large values should be masked to fit in a byte
+        assert server_partition_to_panel(256) == 0xFF  # (256 - 1) & 0xFF = 255
+        assert server_partition_to_panel(257) == 0x00  # (257 - 1) & 0xFF = 0
+
+    def test_round_trip_panel_to_server_to_panel(self):
+        # Converting from panel to server and back should give the same value
+        for panel_partition in range(8):
+            server_partition = panel_partition_to_server(panel_partition)
+            result = server_partition_to_panel(server_partition)
+            assert result == panel_partition
+
+    def test_round_trip_server_to_panel_to_server(self):
+        # Converting from server to panel and back should give the same value (for valid ranges)
+        for server_partition in range(1, 9):
+            panel_partition = server_partition_to_panel(server_partition)
+            result = panel_partition_to_server(panel_partition)
+            assert result == server_partition

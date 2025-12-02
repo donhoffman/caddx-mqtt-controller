@@ -31,6 +31,68 @@ def pin_to_bytearray(pin: str) -> bytearray:
     return pin_array
 
 
+def panel_zone_to_server(panel_zone: int) -> int:
+    """
+    Convert panel zone index (0-based) to server zone index (1-based).
+
+    Panel zones are numbered 0-7, server zones are numbered 1-8.
+
+    Args:
+        panel_zone: Zone index from panel message (0-7)
+
+    Returns:
+        Server zone index (1-8)
+    """
+    return panel_zone + 1
+
+
+def server_zone_to_panel(server_zone: int) -> int:
+    """
+    Convert server zone index (1-based) to panel zone index (0-based).
+
+    Server zones are numbered 1-8, panel zones are numbered 0-7.
+    The result is masked to ensure it fits in a single byte for the protocol.
+
+    Args:
+        server_zone: Zone index used in server (1-8)
+
+    Returns:
+        Panel zone index as byte value (0-7, masked to 0xFF)
+    """
+    return (server_zone - 1) & 0xFF
+
+
+def panel_partition_to_server(panel_partition: int) -> int:
+    """
+    Convert panel partition index (0-based) to server partition index (1-based).
+
+    Panel partitions are numbered 0-7, server partitions are numbered 1-8.
+
+    Args:
+        panel_partition: Partition index from panel message (0-7)
+
+    Returns:
+        Server partition index (1-8)
+    """
+    return panel_partition + 1
+
+
+def server_partition_to_panel(server_partition: int) -> int:
+    """
+    Convert server partition index (1-based) to panel partition index (0-based).
+
+    Server partitions are numbered 1-8, panel partitions are numbered 0-7.
+    The result is masked to ensure it fits in a single byte for the protocol.
+
+    Args:
+        server_partition: Partition index used in server (1-8)
+
+    Returns:
+        Panel partition index as byte value (0-7, masked to 0xFF)
+    """
+    return (server_partition - 1) & 0xFF
+
+
 class StopThread(Exception):
     pass
 
@@ -540,9 +602,7 @@ class CaddxController:
         if len(message) != MessageValidLength[MessageType.ZoneNameRsp]:
             logger.error("Invalid zone name message.")
             return
-        zone_index = (
-            int(message[1]) + 1
-        )  # Server zones start from 1.  Panel zones start from 0.
+        zone_index = panel_zone_to_server(int(message[1]))
         if zone_index > self.number_zones and zone_index not in self.ignored_zones:
             logger.debug(
                 f"Zone index {zone_index} is out of range or ignored. Ignoring zone name response."
@@ -567,7 +627,7 @@ class CaddxController:
         if len(message) != MessageValidLength[MessageType.ZoneStatusRsp]:
             logger.error("Invalid zone status message.")
             return
-        zone_index = int(message[1]) + 1
+        zone_index = panel_zone_to_server(int(message[1]))
         if zone_index > self.number_zones and zone_index not in self.ignored_zones:
             logger.debug(
                 f"Zone index {zone_index} is out of range or ignored. Ignoring zone status."
@@ -626,7 +686,7 @@ class CaddxController:
         if len(message) != MessageValidLength[MessageType.PartitionStatusRsp]:
             logger.error("Invalid partition status response message.")
             return
-        partition_id = int(message[1]) + 1
+        partition_id = panel_partition_to_server(int(message[1]))
         partition: Optional[Partition]
         if not self.panel_synced:
             logger.debug(f"Creating new object for partition {partition_id}.")
@@ -821,7 +881,7 @@ class CaddxController:
 
     def _send_zone_name_req(self, zone: int) -> None:
         logger.debug(f"Queuing zone name request for zone {zone}")
-        zone_index = (zone - 1) & 0xFF
+        zone_index = server_zone_to_panel(zone)
         command = Command(
             MessageType.ZoneNameReq,
             bytearray(zone_index.to_bytes(1, byteorder="little")),
@@ -831,7 +891,7 @@ class CaddxController:
 
     def _send_zone_status_req(self, zone: int) -> None:
         logger.debug(f"Queuing zone status request for zone {zone}")
-        zone_index = (zone - 1) & 0xFF
+        zone_index = server_zone_to_panel(zone)
         command = Command(
             MessageType.ZoneStatusReq,
             bytearray(zone_index.to_bytes(1, byteorder="little")),
@@ -842,10 +902,10 @@ class CaddxController:
     def _send_partition_status_req(self, partition: int):
         logger.debug(f"Queuing partition {partition} status request.")
         assert 1 <= partition <= 8
-        partition = partition - 1
+        partition_index = server_partition_to_panel(partition)
         command = Command(
             MessageType.PartitionStatusReq,
-            bytearray(partition.to_bytes(1, byteorder="little")),
+            bytearray(partition_index.to_bytes(1, byteorder="little")),
             {MessageType.PartitionStatusRsp: self._process_partition_status_rsp},
         )
         self._send_request_to_queue(command)
