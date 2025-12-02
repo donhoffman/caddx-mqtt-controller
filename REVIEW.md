@@ -298,7 +298,7 @@ self.client = mqtt.Client()
 
 ---
 
-### 13. **Improper Use of f-string in Debug Logs**
+### 13. **Improper Use of f-string in Debug Logs** ⚠️ **WON'T FIX**
 **Location:** `src/caddx_controller.py:803`, many others
 
 ```python
@@ -309,9 +309,14 @@ logger.debug(f"Queuing interface configuration request")
 
 **Best Practice:** Use lazy formatting: `logger.debug("Queuing %s request", "interface configuration")`
 
+**Status:** ⚠️ **Won't Fix** 2025-11-30
+- Performance impact is negligible for this application
+- F-strings provide better readability and are the modern Python standard
+- Debug logging is not performance-critical for this use case
+
 ---
 
-### 14. **No Input Validation on Panel Names/IDs**
+### 14. **No Input Validation on Panel Names/IDs** ✅ **COMPLETED**
 **Location:** `src/caddx-server.py:78-87`
 
 **Issue:** User-supplied `panel_unique_id` and `panel_name` are used directly in MQTT topics without sanitization.
@@ -319,6 +324,24 @@ logger.debug(f"Queuing interface configuration request")
 **Risk:** Special characters like `#`, `+`, `/` in panel IDs could break MQTT topic structure.
 
 **Recommendation:** Validate/sanitize these inputs to alphanumeric + underscore/dash only.
+
+**Status:** ✅ **Completed 2025-12-02**
+- Added `sanitize_mqtt_identifier()` function in mqtt_client.py (lines 13-33)
+- Function replaces special characters (MQTT wildcards #, +, hierarchy separator /, whitespace, etc.) with underscores
+- Only allows alphanumeric characters, underscores, and dashes
+- Applied sanitization to `panel_unique_id` in MQTTClient.__init__() (line 59)
+- `panel_name` is NOT sanitized as it's only used for human-readable display names, not in MQTT topics
+- Added warning log when sanitization modifies the panel_unique_id
+- Added 8 comprehensive tests for sanitization function covering:
+  - Valid alphanumeric input (unchanged)
+  - MQTT wildcards (#, +)
+  - Hierarchy separator (/)
+  - Whitespace (space, tab, newline)
+  - Special characters (@, !, $, &, parentheses)
+  - Mixed/complex strings
+  - Empty strings
+  - Unicode characters
+- All 134 tests passing after implementation
 
 ---
 

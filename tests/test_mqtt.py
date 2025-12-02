@@ -383,3 +383,71 @@ class TestMQTTCommandParsing:
         assert partition_name.startswith("partition_")
         partition_index = int(partition_name.split("_")[1])
         assert partition_index == 3
+
+
+class TestSanitizeMQTTIdentifier:
+    """Tests for MQTT identifier sanitization function."""
+
+    def test_sanitize_valid_alphanumeric(self):
+        """Test that valid alphanumeric strings pass through unchanged."""
+        from mqtt_client import sanitize_mqtt_identifier
+
+        assert sanitize_mqtt_identifier("test_panel") == "test_panel"
+        assert sanitize_mqtt_identifier("panel123") == "panel123"
+        assert sanitize_mqtt_identifier("my-panel-id") == "my-panel-id"
+        assert sanitize_mqtt_identifier("Panel_123") == "Panel_123"
+
+    def test_sanitize_mqtt_wildcards(self):
+        """Test that MQTT wildcards are replaced with underscores."""
+        from mqtt_client import sanitize_mqtt_identifier
+
+        assert sanitize_mqtt_identifier("panel#1") == "panel_1"
+        assert sanitize_mqtt_identifier("panel+test") == "panel_test"
+        assert sanitize_mqtt_identifier("#panel+") == "_panel_"
+
+    def test_sanitize_hierarchy_separator(self):
+        """Test that forward slashes are replaced with underscores."""
+        from mqtt_client import sanitize_mqtt_identifier
+
+        assert sanitize_mqtt_identifier("panel/id") == "panel_id"
+        assert sanitize_mqtt_identifier("home/office/panel") == "home_office_panel"
+
+    def test_sanitize_whitespace(self):
+        """Test that whitespace is replaced with underscores."""
+        from mqtt_client import sanitize_mqtt_identifier
+
+        assert sanitize_mqtt_identifier("my panel") == "my_panel"
+        assert sanitize_mqtt_identifier("panel\tid") == "panel_id"
+        assert sanitize_mqtt_identifier("panel\nid") == "panel_id"
+        assert sanitize_mqtt_identifier("  panel  ") == "__panel__"
+
+    def test_sanitize_special_characters(self):
+        """Test that various special characters are replaced."""
+        from mqtt_client import sanitize_mqtt_identifier
+
+        assert sanitize_mqtt_identifier("panel@home") == "panel_home"
+        assert sanitize_mqtt_identifier("panel!test") == "panel_test"
+        assert sanitize_mqtt_identifier("panel$123") == "panel_123"
+        assert sanitize_mqtt_identifier("panel&id") == "panel_id"
+        assert sanitize_mqtt_identifier("panel(1)") == "panel_1_"
+
+    def test_sanitize_mixed_characters(self):
+        """Test complex strings with multiple character types."""
+        from mqtt_client import sanitize_mqtt_identifier
+
+        assert sanitize_mqtt_identifier("My Panel #1 @ Home") == "My_Panel__1___Home"
+        assert sanitize_mqtt_identifier("test/panel+id#123") == "test_panel_id_123"
+
+    def test_sanitize_empty_string(self):
+        """Test sanitization of empty string."""
+        from mqtt_client import sanitize_mqtt_identifier
+
+        assert sanitize_mqtt_identifier("") == ""
+
+    def test_sanitize_unicode(self):
+        """Test that unicode characters are replaced."""
+        from mqtt_client import sanitize_mqtt_identifier
+
+        # Non-ASCII characters should be replaced with underscores
+        assert sanitize_mqtt_identifier("panel™") == "panel_"
+        assert sanitize_mqtt_identifier("panel©2024") == "panel_2024"

@@ -10,6 +10,29 @@ from zone import Zone
 logger = logging.getLogger("app.mqtt_client")
 
 
+def sanitize_mqtt_identifier(value: str) -> str:
+    """
+    Sanitize a string for use in MQTT topics and identifiers.
+
+    Replaces special characters that could break MQTT topic structure
+    with underscores. MQTT wildcards (#, +), hierarchy separator (/),
+    and whitespace are replaced to ensure valid topic paths.
+
+    Args:
+        value: The string to sanitize
+
+    Returns:
+        Sanitized string with only alphanumeric, underscore, and dash characters
+    """
+    result = ""
+    for char in value:
+        if char.isalnum() or char in ("_", "-"):
+            result += char
+        else:
+            result += "_"
+    return result
+
+
 class MQTTClient(object):
     def __init__(
         self,
@@ -30,8 +53,18 @@ class MQTTClient(object):
         self.software_version = version
         self.qos = qos
         self.topic_root = topic_root
-        self.panel_unique_id = panel_unique_id
+
+        # Sanitize panel_unique_id to ensure valid MQTT topic structure
+        # (panel_name is only used for display and doesn't need sanitization)
+        sanitized_id = sanitize_mqtt_identifier(panel_unique_id)
+        if sanitized_id != panel_unique_id:
+            logger.warning(
+                f"Panel unique ID sanitized from '{panel_unique_id}' to '{sanitized_id}' "
+                "to ensure valid MQTT topic structure (alphanumeric, underscore, and dash only)"
+            )
+        self.panel_unique_id = sanitized_id
         self.panel_name = panel_name
+
         self.topic_prefix_panel = (
             f"{self.topic_root}/alarm_control_panel/{self.panel_unique_id}"
         )
