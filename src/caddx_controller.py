@@ -555,7 +555,7 @@ class CaddxController:
             _zone = Zone(zone_index, zone_name)
         elif self.panel_synced:
             logger.error(
-                f"Attempt to create new zone after sync has completed. Ignoring, but this is a bug."
+                f"Attempt to create new zone after sync has completed. Ignoring, but restart if this is intentional."
             )
         else:
             logger.info(f"Zone {zone_index} renamed from {zone.name} to {zone_name}")
@@ -614,6 +614,11 @@ class CaddxController:
             for bit in [0, 4]:
                 if (zone := Zone.get_zone_by_index(zone_index)) is not None:
                     _update_zone_attr(zone, zone_mask, bit)
+                else:
+                    logger.debug(
+                        f"Ignoring zone snapshot for unknown zone index: {zone_index}. "
+                        "Restart if this zone was intentionally added."
+                    )
                 zone_index += 1
 
     # noinspection PyMethodMayBeStatic
