@@ -870,11 +870,11 @@ class CaddxController:
         self.conn.write(message_stuffed)
         return
 
-    def _send_direct_ack(self):
+    def _send_direct_ack(self) -> None:
         time.sleep(ACK_DELAY_SECONDS)
         self._send_direct(MessageType.ACK, None)
 
-    def _send_direct_nack(self):
+    def _send_direct_nack(self) -> None:
         self._send_direct(MessageType.NACK, None)
 
     def _send_interface_configuration_req(self) -> None:
@@ -906,7 +906,7 @@ class CaddxController:
         )
         self._send_request_to_queue(command)
 
-    def _send_partition_status_req(self, partition: int):
+    def _send_partition_status_req(self, partition: int) -> None:
         logger.debug(f"Queuing partition {partition} status request.")
         assert 1 <= partition <= 8
         partition_index = server_partition_to_panel(partition)
