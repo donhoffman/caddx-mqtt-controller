@@ -174,6 +174,17 @@ When fixing issues or adding features:
    - Run formatter: `black src/ tests/`
    - Verify all tests pass
 
+### Git Commit Guidelines
+
+**IMPORTANT**: Code changes and documentation changes (e.g., REVIEW.md updates) should be committed together in a single commit unless explicitly stated otherwise.
+
+- **Good**: One commit containing both the code fix and the REVIEW.md update
+- **Bad**: Separate commits for code changes and documentation updates
+
+**Before committing**:
+- ALWAYS ask the user for approval before running `git commit`
+- Never commit without explicit user confirmation
+
 ### Updating REVIEW.md
 
 When marking an item as complete in REVIEW.md:
