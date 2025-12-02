@@ -4,13 +4,12 @@ import signal
 import sys
 import argparse
 
-# import yaml
 import logging
 
 from caddx_controller import CaddxController
 from mqtt_client import MQTTClient
 
-VERSION: Final = "1.0.0"
+VERSION: Final = "1.1.0"
 DEFAULT_MQTT_PORT: Final = 1883
 LOG_FORMAT: Final = "%(asctime)s - %(module)s - %(levelname)s - %(message)s"
 
