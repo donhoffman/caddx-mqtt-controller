@@ -413,7 +413,7 @@ elif self.panel_synced:
 
 ---
 
-### 17. **No Serial Port Recovery**
+### 17. **No Serial Port Recovery** ⚠️ **DEFERRED**
 **Location:** `src/caddx_controller.py:323-326`
 
 ```python
@@ -428,6 +428,17 @@ def _read_message(self, wait: bool = True) -> Optional[bytearray]:
 **Impact:** Requires full restart to recover from transient serial failures.
 
 **Recommendation:** Implement serial port reconnection logic with exponential backoff.
+
+**Status:** ⚠️ **Deferred to v2.0** 2025-12-02
+- Serial port recovery requires complex state management:
+  * Automatic reconnection with exponential backoff
+  * Detection of serial failures across multiple operations (read/write)
+  * Re-synchronization of panel state after reconnection
+  * Command queue management during disconnection
+  * MQTT status updates during reconnection attempts
+- Too complex for a point release (v1.x)
+- Planned for v2.0 as part of broader reliability improvements
+- Current workaround: Container restart policies handle recovery (Docker/systemd auto-restart)
 
 ---
 
