@@ -608,7 +608,7 @@ devices:
 
 ## Architecture & Design 🏗️
 
-### 29. **Global State in Class Variables**
+### 29. **Global State in Class Variables** ✅ **NOT AN ISSUE**
 **Location:** `partition.py:108-109`, `zone.py:56-57`
 
 ```python
@@ -621,6 +621,18 @@ partition_by_unique_name: Dict[str, "Partition"] = {}
 **Impact:** Cannot run multiple alarm panel connections in one process.
 
 **Design Note:** Acceptable for current single-instance use case, but limits extensibility.
+
+**Status:** ✅ **Not An Issue - Proper Encapsulation** 2025-12-02
+- The class-level dictionaries are **implementation details** of the Partition and Zone classes
+- They are properly encapsulated within the classes - not exposed as global state
+- The registries provide class methods like `get_partition_by_index()` and `get_zone_by_index()`
+  which abstract the storage mechanism
+- This is a valid design pattern (similar to singleton/registry pattern)
+- All information about partitions and zones is fully encapsulated within their respective classes
+- The controller doesn't need to manage these registries - the classes manage themselves
+- For the single-panel use case, this design is clean and appropriate
+- If multi-panel support is needed in the future, the registries can be refactored to instance-level
+  without changing the public API
 
 ---
 
