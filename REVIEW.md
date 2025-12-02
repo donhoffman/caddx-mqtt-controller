@@ -345,7 +345,7 @@ logger.debug(f"Queuing interface configuration request")
 
 ---
 
-### 15. **Inconsistent Error Handling**
+### 15. **Inconsistent Error Handling** ✅ **COMPLETED**
 **Location:** `src/caddx_controller.py:532-559`
 
 **Issue:** `_process_zone_name_rsp` can create new zones during sync OR after sync, with different behaviors. After sync, it logs error but doesn't actually error out.
@@ -360,6 +360,18 @@ elif self.panel_synced:
 **Impact:** Indicates potential logic issue - zones can be created post-sync, suggesting state management problem.
 
 **Recommendation:** Clarify intended behavior and enforce state transitions properly.
+
+**Status:** ✅ **Completed 2025-12-02**
+- This is intentional defensive coding behavior
+- Although new zones CAN be added to the panel after the server process has started, the server intentionally does NOT create those zones without an explicit restart
+- Updated error message in `_process_zone_name_rsp()` to: "Attempt to create new zone after sync has completed. Ignoring, but restart if this is intentional."
+- Added debug logging in `_process_zone_snapshot_rsp()` when unknown zones are encountered
+- All zone message handlers now consistently log when unknown zones are encountered:
+  - `_process_zone_name_rsp()`: logs error with restart instruction
+  - `_process_zone_status_rsp()`: logs error (already present)
+  - `_process_zone_snapshot_rsp()`: logs debug with restart instruction (newly added)
+- This prevents unexpected zone creation during runtime which could cause MQTT configuration issues
+- All 134 tests passing
 
 ---
 
