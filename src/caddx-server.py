@@ -3,8 +3,8 @@ import os
 import signal
 import sys
 import argparse
-
 import logging
+from serial import SerialException
 
 from caddx_controller import CaddxController
 from mqtt_client import MQTTClient
@@ -131,8 +131,21 @@ def main() -> int:
             default_user=args.user,
             ignored_zones=args.ignored_zones,
         )
+    except SerialException as e:
+        logger.error(f"Serial port error: {e}")
+        logger.error(
+            "Check that the serial port exists, is not in use, and you have permission to access it"
+        )
+        return 1
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        return 1
+    except (OSError, PermissionError) as e:
+        logger.error(f"System error accessing serial port: {e}")
+        return 1
     except Exception as e:
-        logger.error(f"Failed to initialize Caddx MQTT Controller: {e}")
+        logger.error(f"Unexpected error initializing Caddx MQTT Controller: {e}")
+        logger.exception("Full traceback:")
         return 1
 
     # Initialize the MQTT client
@@ -149,8 +162,18 @@ def main() -> int:
             version=VERSION,
             qos=args.qos,
         )
+    except (OSError, ConnectionRefusedError) as e:
+        logger.error(
+            f"Cannot connect to MQTT broker at {args.mqtt_host}:{args.mqtt_port}: {e}"
+        )
+        logger.error("Check that the MQTT broker is running and accessible")
+        return 1
+    except ValueError as e:
+        logger.error(f"MQTT configuration error: {e}")
+        return 1
     except Exception as e:
-        logger.error(f"Failed to initialize Caddx MQTT Client: {e}")
+        logger.error(f"Unexpected error initializing MQTT client: {e}")
+        logger.exception("Full traceback:")
         return 1
 
     # Run the controller loop

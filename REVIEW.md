@@ -543,7 +543,7 @@ Examples:
 
 ---
 
-### 23. **Overly Broad Exception Catching**
+### 23. **Overly Broad Exception Catching** ✅ **COMPLETED**
 **Location:** `src/caddx-server.py:128-130`, `145-147`
 
 ```python
@@ -555,6 +555,22 @@ except Exception as e:
 **Issue:** Catches all exceptions, including `KeyboardInterrupt`, `SystemExit`, etc.
 
 **Best Practice:** Catch specific exceptions (SerialException, ConnectionError, etc.).
+
+**Status:** ✅ **Completed 2025-12-02**
+- Replaced overly broad `except Exception` with specific exception handlers
+- **CaddxController initialization** now catches:
+  * `SerialException` - Serial port errors (port doesn't exist, in use, permission denied)
+  * `ValueError` - Configuration errors (invalid PIN format)
+  * `OSError`/`PermissionError` - System errors accessing serial device
+  * `Exception` (catch-all) - Unexpected errors with full traceback logging
+- **MQTTClient initialization** now catches:
+  * `OSError`/`ConnectionRefusedError` - Network/broker connection errors
+  * `ValueError` - MQTT configuration errors (invalid port, QoS)
+  * `Exception` (catch-all) - Unexpected errors with full traceback logging
+- Each specific exception provides actionable error messages to help users diagnose issues
+- `KeyboardInterrupt` and `SystemExit` now propagate correctly for graceful shutdown
+- Added scoped import: `from serial import SerialException`
+- All 152 tests passing after changes
 
 ---
 
