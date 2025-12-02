@@ -1,4 +1,5 @@
 """Tests for message encoding and decoding."""
+
 import pytest
 from unittest.mock import Mock, MagicMock
 from caddx_controller import CaddxController, MessageType, MessageValidLength
@@ -91,7 +92,9 @@ class TestMessageValidation:
         ]
 
         for msg_type in required_types:
-            assert msg_type in MessageValidLength, f"{msg_type.name} missing from MessageValidLength"
+            assert (
+                msg_type in MessageValidLength
+            ), f"{msg_type.name} missing from MessageValidLength"
             assert MessageValidLength[msg_type] > 0
 
     def test_message_lengths_are_positive(self):
@@ -152,9 +155,7 @@ class TestChecksumValidation:
 
         # Verify checksum is correctly appended
         offered_checksum = int.from_bytes(full_message[-2:], byteorder="little")
-        calculated_checksum = CaddxController._calculate_fletcher16(
-            full_message[:-2]
-        )
+        calculated_checksum = CaddxController._calculate_fletcher16(full_message[:-2])
 
         assert offered_checksum == calculated_checksum
 

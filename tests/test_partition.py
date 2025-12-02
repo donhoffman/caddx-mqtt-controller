@@ -1,4 +1,5 @@
 """Tests for partition state management."""
+
 import pytest
 from partition import Partition, PartitionConditionFlags
 
@@ -90,8 +91,7 @@ class TestPartitionStateDisarmed:
     def test_disarmed_both_ready_flags(self):
         """Test DISARMED with both ready flags."""
         self.partition.condition_flags = (
-            PartitionConditionFlags.ReadyToArm
-            | PartitionConditionFlags.ReadyToForceArm
+            PartitionConditionFlags.ReadyToArm | PartitionConditionFlags.ReadyToForceArm
         )
         assert self.partition.state == Partition.State.DISARMED
 

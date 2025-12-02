@@ -88,7 +88,9 @@ class MQTTClient(object):
 
         # Set Last Will and Testament BEFORE connecting
         # This ensures the broker will publish "offline" if we disconnect unexpectedly
-        self.client.will_set(self.availability_topic, "offline", qos=self.qos, retain=True)
+        self.client.will_set(
+            self.availability_topic, "offline", qos=self.qos, retain=True
+        )
 
         logger.info(f"Connecting to MQTT server at {host}:{port}.")
 

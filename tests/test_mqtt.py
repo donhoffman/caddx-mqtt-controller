@@ -1,4 +1,5 @@
 """Tests for MQTT topic generation and message formatting."""
+
 import pytest
 import json
 from partition import Partition
@@ -22,23 +23,32 @@ class TestMQTTTopicGeneration:
         """Test partition command topic generation."""
         partition = Partition(1)
         expected = f"{self.topic_root}/alarm_control_panel/{self.panel_unique_id}/{partition.unique_name}/set"
-        assert expected == f"homeassistant/alarm_control_panel/test_panel/partition_1/set"
+        assert (
+            expected == f"homeassistant/alarm_control_panel/test_panel/partition_1/set"
+        )
 
     def test_partition_state_topic(self):
         """Test partition state topic generation."""
         partition = Partition(1)
         expected = f"{self.topic_root}/alarm_control_panel/{self.panel_unique_id}/{partition.unique_name}/state"
-        assert expected == "homeassistant/alarm_control_panel/test_panel/partition_1/state"
+        assert (
+            expected == "homeassistant/alarm_control_panel/test_panel/partition_1/state"
+        )
 
     def test_partition_config_topic(self):
         """Test partition config topic generation."""
         partition = Partition(1)
         expected = f"{self.topic_root}/alarm_control_panel/{self.panel_unique_id}/{partition.unique_name}/config"
-        assert expected == "homeassistant/alarm_control_panel/test_panel/partition_1/config"
+        assert (
+            expected
+            == "homeassistant/alarm_control_panel/test_panel/partition_1/config"
+        )
 
     def test_partition_availability_topic(self):
         """Test availability topic generation."""
-        expected = f"{self.topic_root}/alarm_control_panel/{self.panel_unique_id}/availability"
+        expected = (
+            f"{self.topic_root}/alarm_control_panel/{self.panel_unique_id}/availability"
+        )
         assert expected == "homeassistant/alarm_control_panel/test_panel/availability"
 
     def test_zone_state_topic(self):
@@ -51,33 +61,45 @@ class TestMQTTTopicGeneration:
         """Test zone bypass config topic generation."""
         zone = Zone(1, "Front Door")
         expected = f"{self.topic_root}/binary_sensor/{self.panel_unique_id}/{zone.unique_name}_bypass/config"
-        assert expected == "homeassistant/binary_sensor/test_panel/zone_001_bypass/config"
+        assert (
+            expected == "homeassistant/binary_sensor/test_panel/zone_001_bypass/config"
+        )
 
     def test_zone_faulted_config_topic(self):
         """Test zone faulted config topic generation."""
         zone = Zone(1, "Front Door")
         expected = f"{self.topic_root}/binary_sensor/{self.panel_unique_id}/{zone.unique_name}_faulted/config"
-        assert expected == "homeassistant/binary_sensor/test_panel/zone_001_faulted/config"
+        assert (
+            expected == "homeassistant/binary_sensor/test_panel/zone_001_faulted/config"
+        )
 
     def test_zone_trouble_config_topic(self):
         """Test zone trouble config topic generation."""
         zone = Zone(1, "Front Door")
         expected = f"{self.topic_root}/binary_sensor/{self.panel_unique_id}/{zone.unique_name}_trouble/config"
-        assert expected == "homeassistant/binary_sensor/test_panel/zone_001_trouble/config"
+        assert (
+            expected == "homeassistant/binary_sensor/test_panel/zone_001_trouble/config"
+        )
 
     def test_topic_with_custom_root(self):
         """Test topics with custom root."""
         custom_root = "my_custom_root"
         partition = Partition(1)
         expected = f"{custom_root}/alarm_control_panel/{self.panel_unique_id}/{partition.unique_name}/state"
-        assert expected == "my_custom_root/alarm_control_panel/test_panel/partition_1/state"
+        assert (
+            expected
+            == "my_custom_root/alarm_control_panel/test_panel/partition_1/state"
+        )
 
     def test_topic_with_custom_panel_id(self):
         """Test topics with custom panel ID."""
         custom_panel_id = "bedroom_panel"
         partition = Partition(1)
         expected = f"{self.topic_root}/alarm_control_panel/{custom_panel_id}/{partition.unique_name}/state"
-        assert expected == "homeassistant/alarm_control_panel/bedroom_panel/partition_1/state"
+        assert (
+            expected
+            == "homeassistant/alarm_control_panel/bedroom_panel/partition_1/state"
+        )
 
 
 class TestPartitionConfigPayload:

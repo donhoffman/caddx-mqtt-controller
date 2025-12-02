@@ -1,4 +1,5 @@
 """Tests for zone state management."""
+
 import pytest
 from zone import Zone, ZoneConditionFlags, ZoneTypeFlags
 from partition import Partition

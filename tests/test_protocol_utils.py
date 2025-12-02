@@ -1,4 +1,5 @@
 """Tests for protocol utility functions."""
+
 import pytest
 from caddx_controller import (
     get_nth_bit,

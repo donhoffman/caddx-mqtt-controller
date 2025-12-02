@@ -657,7 +657,9 @@ class CaddxController:
     # noinspection PyMethodMayBeStatic
     def _process_zone_snapshot_rsp(self, message: bytearray) -> None:
         # Zone snapshot processing is not implemented - individual zone status messages are used instead
-        logger.info("Received zone snapshot message - not currently processed, relying on individual zone status updates")
+        logger.info(
+            "Received zone snapshot message - not currently processed, relying on individual zone status updates"
+        )
 
         def _update_zone_attr(z: Zone, _mask: int, _start_bit: int) -> None:
             # z.faulted = bool(get_nth_bit(mask, start_bit))
