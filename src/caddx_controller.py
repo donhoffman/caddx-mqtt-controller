@@ -1,4 +1,6 @@
-from typing import NamedTuple, Dict, Callable, Optional
+from __future__ import annotations
+
+from typing import NamedTuple, Dict, Callable, Optional, TYPE_CHECKING
 from types import MappingProxyType
 from enum import IntEnum
 import logging
@@ -7,7 +9,9 @@ import queue
 import time
 import datetime
 
-from mqtt_client import MQTTClient
+if TYPE_CHECKING:
+    from mqtt_client import MQTTClient
+
 from zone import Zone
 from partition import Partition
 
