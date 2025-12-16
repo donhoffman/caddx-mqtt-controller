@@ -34,6 +34,20 @@ def sanitize_mqtt_identifier(value: str) -> str:
 
 
 class MQTTClient(object):
+    """
+    MQTT client for publishing Caddx alarm panel state to Home Assistant.
+
+    Implements Home Assistant MQTT Discovery protocol for alarm panels and zones.
+    Manages connection to MQTT broker, publishes device configs and states, and
+    listens for arm/disarm commands from Home Assistant.
+
+    Attributes:
+        software_version: Version string for MQTT discovery device info
+        qos: MQTT Quality of Service level (0, 1, or 2)
+        panel_unique_id: Sanitized unique identifier for the panel
+        panel_name: Human-readable panel name
+        connected: True when connected to MQTT broker
+    """
     def __init__(
         self,
         caddx_ctrl,
@@ -50,6 +64,27 @@ class MQTTClient(object):
         timeout_seconds: int = 60,
         qos: int = 1,
     ):
+        """
+        Initialize MQTT client and connect to broker.
+
+        Args:
+            caddx_ctrl: CaddxController instance for sending commands
+            host: MQTT broker hostname or IP
+            port: MQTT broker port
+            user: MQTT username
+            password: MQTT password
+            topic_root: Root topic for all messages (default: "homeassistant")
+            panel_unique_id: Unique identifier for panel (sanitized automatically)
+            panel_name: Human-readable panel name
+            _tls: TLS encryption (not implemented)
+            _tls_insecure: Allow insecure TLS (not implemented)
+            version: Software version for discovery
+            timeout_seconds: Connection timeout in seconds
+            qos: MQTT QoS level (0, 1, or 2)
+
+        Raises:
+            Exception: If connection to MQTT broker fails
+        """
         self.software_version = version
         self.qos = qos
         self.topic_root = topic_root
@@ -102,6 +137,18 @@ class MQTTClient(object):
             raise e
 
     def on_connect(self, _client, _userdata, _flags, rc) -> None:
+        """
+        Handle MQTT broker connection initialization.
+
+        Called by paho-mqtt when connection succeeds or fails. On success,
+        subscribes to command topics and publishes initial offline availability.
+
+        Args:
+            _client: MQTT client instance (unused)
+            _userdata: User data (unused)
+            _flags: Connection flags (unused)
+            rc: Result code (0 = success)
+        """
         if rc == 0:
             self.connected = True
             logger.info("Connected to MQTT server.")
@@ -121,6 +168,19 @@ class MQTTClient(object):
             logger.debug(f"Failed to connect to MQTT server result code {rc}.")
 
     def on_message(self, _client, _userdata, msg) -> None:
+        """
+        Handle incoming MQTT messages.
+
+        Processes two types of messages:
+        1. Home Assistant status ("homeassistant/status") - triggers re-sync on HA restart
+        2. Alarm commands ("<topic_root>/alarm_control_panel/<panel_id>/<partition>/set")
+           - ARM_AWAY, ARM_HOME, DISARM
+
+        Args:
+            _client: MQTT client instance (unused)
+            _userdata: User data (unused)
+            msg: MQTT message with topic and payload
+        """
         if not self.connected:
             return
         # Check for MQTT integration availability message
@@ -164,24 +224,63 @@ class MQTTClient(object):
                     logger.error(f"Unknown command: {command}")
 
     def on_disconnect(self, _client, _userdata, _rc) -> None:
+        """
+        Handle MQTT broker disconnection.
+
+        Called by paho-mqtt when connection is lost. Sets connected flag to False.
+        Automatic reconnection is handled by paho-mqtt background thread.
+
+        Args:
+            _client: MQTT client instance (unused)
+            _userdata: User data (unused)
+            _rc: Result code (unused)
+        """
         self.connected = False
 
     def publish_online(self) -> None:
+        """
+        Publish online availability status to MQTT.
+
+        Should be called after panel sync completes. Updates all Home Assistant
+        entities to show as available.
+        """
         self.client.publish(
             self.availability_topic, payload="online", qos=self.qos, retain=True
         )
 
     def publish_offline(self) -> None:
+        """
+        Publish offline availability status to MQTT.
+
+        Called during startup and shutdown. Updates all Home Assistant entities
+        to show as unavailable.
+        """
         self.client.publish(
             self.availability_topic, payload="offline", qos=self.qos, retain=True
         )
 
     def publish_configs(self) -> None:
+        """
+        Publish all partition MQTT discovery configs.
+
+        Iterates through all partitions and publishes discovery config for each.
+        Should be called after panel sync or on Home Assistant restart.
+        """
         partitions = Partition.get_all_partitions()
         for partition in partitions:
             self.publish_partition_config(partition)
 
     def publish_partition_config(self, partition: Partition) -> None:
+        """
+        Publish MQTT discovery config for a partition.
+
+        Creates Home Assistant alarm_control_panel entity with ARM_HOME and
+        ARM_AWAY capabilities. Config includes device info, state/command topics,
+        and availability.
+
+        Args:
+            partition: Partition to publish config for
+        """
         partition_config = {
             "name": None,
             "device_class": "alarm_control_panel",
@@ -214,6 +313,19 @@ class MQTTClient(object):
         logger.debug(f"Published Partition {partition.index} config.")
 
     def publish_zone_config(self, zone: Zone) -> None:
+        """
+        Publish MQTT discovery configs for a zone.
+
+        Creates three Home Assistant binary_sensor entities per zone:
+        1. Bypass status sensor
+        2. Fault status sensor
+        3. Trouble status sensor
+
+        Each sensor shares the same zone device in Home Assistant.
+
+        Args:
+            zone: Zone to publish configs for
+        """
         # The zone config defines three entities for the zone:
         # 1. A binary sensor for the zone's bypass status
         # 2. A binary sensor for the zone's fault status
@@ -287,18 +399,40 @@ class MQTTClient(object):
         logger.debug(f"Published Zone {zone.index} config.")
 
     def publish_zone_configs(self) -> None:
+        """
+        Publish MQTT discovery configs for all zones.
+
+        Includes 1-second delay between zones to prevent MQTT broker overload.
+        Should be called after panel sync completes.
+        """
         zones = Zone.get_all_zones()
         for zone in zones:
             time.sleep(1)
             self.publish_zone_config(zone)
 
     def publish_zone_states(self) -> None:
+        """
+        Publish state updates for all zones.
+
+        Includes 1-second delay between zones to prevent MQTT broker overload.
+        Should be called after panel sync or periodically.
+        """
         zones = Zone.get_all_zones()
         for zone in zones:
             time.sleep(1)
             self.publish_zone_state(zone)
 
     def publish_zone_state(self, zone: Zone) -> None:
+        """
+        Publish state update for a single zone.
+
+        Publishes JSON payload with bypassed, faulted, and trouble status.
+        Only publishes if zone has been updated since last publish. Clears
+        the is_updated flag after publishing.
+
+        Args:
+            zone: Zone to publish state for
+        """
         if not zone.is_updated:
             return
         state = {
@@ -312,11 +446,25 @@ class MQTTClient(object):
         logger.debug(f"Published Zone {zone.index} state.")
 
     def publish_partition_states(self) -> None:
+        """
+        Publish state updates for all partitions.
+
+        Should be called after panel sync or when partition states change.
+        """
         partitions = Partition.get_all_partitions()
         for partition in partitions:
             self.publish_partition_state(partition)
 
     def publish_partition_state(self, partition: Partition) -> None:
+        """
+        Publish state update for a single partition.
+
+        Publishes alarm state (disarmed, armed_away, armed_home, triggered, etc.)
+        to Home Assistant. Only publishes if partition state is known.
+
+        Args:
+            partition: Partition to publish state for
+        """
         state = partition.state
         if state is not None:
             state_topic = f"{self.topic_prefix_panel}/{partition.unique_name}/state"

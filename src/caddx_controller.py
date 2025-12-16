@@ -20,10 +20,34 @@ ACK_DELAY_SECONDS = 0.25  # Delay before sending ACK message
 
 
 def get_nth_bit(num: int, n: int) -> int:
+    """
+    Extract the nth bit from an integer (0-indexed, LSB first).
+
+    Args:
+        num: Integer to extract bit from
+        n: Bit position (0 = LSB)
+
+    Returns:
+        0 or 1 depending on bit value at position n
+    """
     return (num >> n) & 1
 
 
 def pin_to_bytearray(pin: str) -> bytearray:
+    """
+    Convert a PIN string to packed BCD bytearray format for panel protocol.
+
+    Packs two decimal digits per byte in BCD format (e.g., "1234" -> [0x12, 0x34, 0x00]).
+
+    Args:
+        pin: PIN string containing 4 or 6 decimal digits
+
+    Returns:
+        3-byte bytearray with BCD-encoded PIN (trailing zeros if 4 digits)
+
+    Raises:
+        ValueError: If PIN length is not 4 or 6 characters
+    """
     if len(pin) not in [4, 6]:
         raise ValueError("PIN must be 4 or 6 characters long")
 
@@ -99,14 +123,22 @@ def server_partition_to_panel(server_partition: int) -> int:
 
 
 class StopThread(Exception):
+    """Exception raised to signal graceful shutdown of the controller thread."""
     pass
 
 
 class ControllerError(Exception):
+    """Exception raised when panel configuration validation fails."""
     pass
 
 
 class MessageType(IntEnum):
+    """
+    Caddx NX-584 protocol message type identifiers.
+
+    Messages are split into responses (0x01-0x1F) from the panel
+    and requests (0x21-0x3F) sent to the panel.
+    """
     InterfaceConfigRsp = 0x01  # Interface Configuration (Response)
     ZoneNameRsp = 0x03  # Zone Name (Response)
     ZoneStatusRsp = 0x04  # Zone Status (Response)
@@ -197,6 +229,15 @@ MessageValidLength = MappingProxyType(
 
 
 class Command(NamedTuple):
+    """
+    Command structure for queueing panel requests with their handlers.
+
+    Attributes:
+        req_msg_type: Message type to send to panel
+        req_msg_data: Optional payload bytes for the message
+        response_handler: Dict mapping expected response types to handler functions
+        request_ack: Whether to request ACK from panel (sets bit 0x80 in msg type)
+    """
     req_msg_type: MessageType
     req_msg_data: Optional[bytearray] = None
     response_handler: Optional[Dict[MessageType, Callable[[bytearray], None]]] = None
@@ -205,6 +246,13 @@ class Command(NamedTuple):
 
 # Interface Configuration (Response) constants
 class TransitionMessageFlags(IntEnum):
+    """
+    Bitmask flags indicating which transition/broadcast messages the panel supports.
+
+    These flags appear in the Interface Configuration response (2 bytes, little-endian).
+    Each bit indicates whether the panel will send unsolicited broadcast messages
+    of that type when state changes occur.
+    """
     # Combined transition/broadcast message flags.
     # Represented as 2 bytes in little-endian format OTW, so lower index bytes are rightmost when represented as int.
     # Interface Configuration response
@@ -228,6 +276,12 @@ class TransitionMessageFlags(IntEnum):
 
 
 class RequestCommandFlags(IntEnum):
+    """
+    Bitmask flags indicating which request/command messages the panel supports.
+
+    These flags appear in the Interface Configuration response (4 bytes, little-endian).
+    Each bit indicates whether the panel will accept and respond to that request type.
+    """
     # Combined request/ message flags.
     # Represented as 4 bytes in little-endian format over-the-wire, so lower index bytes are rightmost
     #  when represented as int.
@@ -282,6 +336,11 @@ class RequestCommandFlags(IntEnum):
 
 
 class PrimaryKeypadFunctions(IntEnum):
+    """
+    Primary keypad function codes for arm/disarm operations.
+
+    These values are used in PrimaryKeypadFunction messages to control partitions.
+    """
     TurnOffAlarm = 0x00
     Disarm = 0x01
     ArmAway = 0x02
@@ -293,6 +352,25 @@ class PrimaryKeypadFunctions(IntEnum):
 
 
 class CaddxController:
+    """
+    Controller for Caddx NX-584 alarm panel serial protocol communication.
+
+    Manages serial communication with Caddx alarm panels, implements the NX-584
+    binary protocol with Fletcher-16 checksums and byte stuffing, maintains
+    command queue with retry logic, and synchronizes panel state on startup.
+
+    Attributes:
+        serial_path: Path to serial device (e.g., /dev/ttyUSB0)
+        number_zones: Maximum number of zones to monitor
+        default_code: Default PIN for arm/disarm (BCD encoded)
+        default_user: Default user number for arm/disarm without PIN
+        mqtt_client: MQTT client for publishing state updates
+        panel_synced: True after initial synchronization completes
+        panel_firmware: Firmware version string from panel
+        panel_id: Panel ID from system status
+        partition_mask: Bitmask of active partitions
+        ignored_zones: Set of zone numbers to skip during sync
+    """
     def __init__(
         self,
         serial_path: str,
@@ -302,6 +380,20 @@ class CaddxController:
         default_user: str = None,
         ignored_zones: str = None,
     ) -> None:
+        """
+        Initialize Caddx controller and open serial connection.
+
+        Args:
+            serial_path: Path to serial device (e.g., /dev/ttyUSB0)
+            baud_rate: Serial baud rate (typically 38400)
+            number_zones: Maximum zone number to monitor
+            default_code: Optional PIN code for arm/disarm operations
+            default_user: Optional user number for PIN-less operations
+            ignored_zones: Optional comma-separated list of zone numbers to ignore
+
+        Raises:
+            serial.SerialException: If serial port cannot be opened
+        """
         self.serial_path = serial_path
         self.number_zones = number_zones
         self.default_code = default_code
@@ -322,6 +414,19 @@ class CaddxController:
         logger.info(f"Opened serial connection at '{serial_path}'. Mode is binary")
 
     def control_loop(self, mqtt_client: MQTTClient) -> int:
+        """
+        Main control loop for panel communication and state management.
+
+        Performs initial panel synchronization, publishes configs to Home Assistant,
+        processes command queue, polls for transition messages, and republishes
+        state hourly. Runs until interrupted or exception occurs.
+
+        Args:
+            mqtt_client: MQTT client for publishing states and configs
+
+        Returns:
+            0 for normal exit, 1 for error exit
+        """
         logger.debug("Starting controller run loop.")
         self.mqtt_client = mqtt_client
         self._command_queue = queue.Queue()
@@ -392,6 +497,22 @@ class CaddxController:
         return rc
 
     def _read_message(self, wait: bool = True) -> Optional[bytearray]:
+        """
+        Read and decode a message from the serial port using NX-584 protocol.
+
+        Reads start byte (0x7E), message length, data, and checksum. Performs
+        byte unstuffing (0x7D 0x5E → 0x7E, 0x7D 0x5D → 0x7D) and validates
+        Fletcher-16 checksum. Returns None on timeout, invalid format, or
+        checksum mismatch.
+
+        Args:
+            wait: If True, block until message arrives. If False, return None immediately
+                  if no data available.
+
+        Returns:
+            Message data (without length byte, start byte, or checksum) on success,
+            None on timeout or error
+        """
         if not self.conn.is_open:
             logger.error("Call to _read_message with closed serial connection.")
             return None
@@ -462,6 +583,17 @@ class CaddxController:
         return (sum2 << 8) | sum1
 
     def _process_transition_message(self, received_message: bytearray) -> None:
+        """
+        Process unsolicited broadcast messages from the panel.
+
+        Handles transition messages (state changes) sent by the panel without
+        a request. Routes to appropriate handler based on message type. Only
+        processes messages after panel_synced is True to avoid state corruption
+        during initial sync.
+
+        Args:
+            received_message: Raw message bytes (msg_type + data, no length/checksum)
+        """
         message_type = received_message[0] & ~0xC0
         ack_requested = bool(received_message[0] & 0x80)
         if message_type not in MessageValidLength:
@@ -490,6 +622,19 @@ class CaddxController:
         return
 
     def _process_interface_config_rsp(self, message: bytearray) -> None:
+        """
+        Process Interface Configuration response and validate panel capabilities.
+
+        Extracts panel firmware version, transition message flags, and request
+        command flags. Validates that all required messages for proper operation
+        are enabled in the panel configuration.
+
+        Args:
+            message: Interface Configuration response message bytes
+
+        Raises:
+            ControllerError: If required messages are not enabled in panel config
+        """
         self.panel_firmware = message[1:5].decode("ascii").rstrip()
         logger.debug(f"Panel firmware: {self.panel_firmware}")
 
@@ -601,6 +746,16 @@ class CaddxController:
 
     # noinspection PyMethodMayBeStatic
     def _process_zone_name_rsp(self, message: bytearray) -> None:
+        """
+        Process Zone Name response and create or update Zone object.
+
+        During initial sync, creates Zone objects as names are received. After
+        sync, updates existing zone names if changed. Ignores zones outside
+        configured range or in ignored_zones set.
+
+        Args:
+            message: Zone Name response message bytes
+        """
         # Note that we request zone names for all zones on first startup.   In the case of this handler
         #  the zone object may not yet exist, and we can instantiate if necessary.   For other zone
         #  messages the zone object should already exist.
@@ -629,6 +784,16 @@ class CaddxController:
 
     # noinspection PyMethodMayBeStatic
     def _process_zone_status_rsp(self, message: bytearray) -> None:
+        """
+        Process Zone Status response and update Zone state.
+
+        Extracts partition mask, type mask, and condition mask from message
+        and updates the corresponding Zone object. Publishes state to MQTT
+        if panel is already synced.
+
+        Args:
+            message: Zone Status response message bytes
+        """
         if len(message) != MessageValidLength[MessageType.ZoneStatusRsp]:
             logger.error("Invalid zone status message.")
             return
@@ -657,16 +822,42 @@ class CaddxController:
 
     # noinspection PyMethodMayBeStatic
     def _process_ack(self, _message: bytearray) -> None:
+        """
+        Process ACK response from panel.
+
+        Args:
+            _message: ACK message bytes (unused, ACK has no data payload)
+        """
         logger.debug("Got ACK in response to previous request.")
 
     # noinspection PyMethodMayBeStatic
     def _process_zone_snapshot_rsp(self, message: bytearray) -> None:
+        """
+        Process Zone Snapshot response (currently not fully implemented).
+
+        Zone snapshots provide bulk zone state updates. This handler is a stub;
+        the system relies on individual Zone Status messages for state updates.
+
+        Args:
+            message: Zone Snapshot response message bytes
+        """
         # Zone snapshot processing is not implemented - individual zone status messages are used instead
         logger.info(
             "Received zone snapshot message - not currently processed, relying on individual zone status updates"
         )
 
         def _update_zone_attr(z: Zone, _mask: int, _start_bit: int) -> None:
+            """
+            Update zone attributes from snapshot data (stub implementation).
+
+            Currently only marks zone as updated. Full implementation would
+            extract faulted, bypassed, and trouble states from mask bits.
+
+            Args:
+                z: Zone to update
+                _mask: Condition mask (unused in current implementation)
+                _start_bit: Starting bit position (unused in current implementation)
+            """
             # z.faulted = bool(get_nth_bit(mask, start_bit))
             # z.bypassed = bool(get_nth_bit(mask, start_bit + 1))
             # z.trouble = bool(get_nth_bit(mask, start_bit + 2))
@@ -690,6 +881,16 @@ class CaddxController:
 
     # noinspection PyMethodMayBeStatic
     def _process_partition_status_rsp(self, message: bytearray) -> None:
+        """
+        Process Partition Status response and update Partition state.
+
+        During sync, creates new Partition objects. After sync, updates existing
+        partition condition flags (48-bit value). Publishes state to MQTT if
+        panel is synced.
+
+        Args:
+            message: Partition Status response message bytes
+        """
         if len(message) != MessageValidLength[MessageType.PartitionStatusRsp]:
             logger.error("Invalid partition status response message.")
             return
@@ -720,6 +921,16 @@ class CaddxController:
             self.mqtt_client.publish_partition_state(partition)
 
     def _process_system_status_rsp(self, message: bytearray) -> None:
+        """
+        Process System Status response and discover active partitions.
+
+        Extracts panel ID and partition mask (bitmask of active partitions).
+        During initial sync, queues Partition Status requests for all active
+        partitions. After sync, validates partition mask hasn't changed.
+
+        Args:
+            message: System Status response message bytes
+        """
         if len(message) != MessageValidLength[MessageType.SystemStatusRsp]:
             logger.error("Invalid system status message.")
             return
@@ -825,6 +1036,12 @@ class CaddxController:
         return
 
     def _send_request_to_queue(self, command: Command) -> None:
+        """
+        Add a command to the processing queue.
+
+        Args:
+            command: Command object containing request and response handler
+        """
         self._command_queue.put(command)
         return
 
@@ -834,6 +1051,19 @@ class CaddxController:
         message_data: Optional[bytearray],
         request_ack: bool = False,
     ) -> None:
+        """
+        Send a message directly to the panel via serial port.
+
+        Constructs message with length byte, message type, optional data, and
+        Fletcher-16 checksum. Applies byte stuffing (0x7E → 0x7D 0x5E, 0x7D →
+        0x7D 0x5D) and adds start byte (0x7E). Sets ACK bit (0x80) in message
+        type if requested.
+
+        Args:
+            message_type: Message type identifier
+            message_data: Optional message payload bytes
+            request_ack: If True, sets bit 0x80 in message type to request ACK
+        """
         message_length = 1 + len(message_data) if message_data else 1
         if message_type not in MessageValidLength:
             logger.error(f"Unsupported message type: {message_type:02x}")
@@ -871,13 +1101,24 @@ class CaddxController:
         return
 
     def _send_direct_ack(self) -> None:
+        """
+        Send ACK message to panel after brief delay.
+
+        Used to acknowledge transition messages that have the ACK-requested bit set.
+        """
         time.sleep(ACK_DELAY_SECONDS)
         self._send_direct(MessageType.ACK, None)
 
     def _send_direct_nack(self) -> None:
+        """Send NACK message to panel (currently unused)."""
         self._send_direct(MessageType.NACK, None)
 
     def _send_interface_configuration_req(self) -> None:
+        """
+        Queue Interface Configuration request to validate panel capabilities.
+
+        Used during initial sync to verify panel supports all required message types.
+        """
         logger.debug(f"Queuing interface configuration request")
         command = Command(
             MessageType.InterfaceConfigReq,
@@ -887,6 +1128,12 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_zone_name_req(self, zone: int) -> None:
+        """
+        Queue Zone Name request for specified zone.
+
+        Args:
+            zone: Server zone index (1-based)
+        """
         logger.debug(f"Queuing zone name request for zone {zone}")
         zone_index = server_zone_to_panel(zone)
         command = Command(
@@ -897,6 +1144,12 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_zone_status_req(self, zone: int) -> None:
+        """
+        Queue Zone Status request for specified zone.
+
+        Args:
+            zone: Server zone index (1-based)
+        """
         logger.debug(f"Queuing zone status request for zone {zone}")
         zone_index = server_zone_to_panel(zone)
         command = Command(
@@ -907,6 +1160,12 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_partition_status_req(self, partition: int) -> None:
+        """
+        Queue Partition Status request for specified partition.
+
+        Args:
+            partition: Server partition index (1-8)
+        """
         logger.debug(f"Queuing partition {partition} status request.")
         assert 1 <= partition <= 8
         partition_index = server_partition_to_panel(partition)
@@ -918,6 +1177,11 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def _send_system_status_req(self) -> None:
+        """
+        Queue System Status request to discover active partitions.
+
+        Used during initial sync to get partition bitmask from panel.
+        """
         logger.debug(f"Queuing system status request")
         command = Command(
             MessageType.SystemStatusReq,
@@ -927,6 +1191,12 @@ class CaddxController:
         self._send_request_to_queue(command)
 
     def send_set_clock_req(self) -> None:
+        """
+        Queue Set Clock/Calendar request to synchronize panel time.
+
+        Sends current system time to panel. Weekday is corrected for difference
+        between Python's tm_wday (0=Monday) and panel expectation (1=Monday).
+        """
         time_stamp = time.localtime(time.time())
         message = bytearray()
         message.extend((time_stamp.tm_year - 2000).to_bytes(1, byteorder="little"))
@@ -949,6 +1219,16 @@ class CaddxController:
     def send_primary_keypad_function_wo_pin(
         self, partition: Partition, function: PrimaryKeypadFunctions
     ) -> None:
+        """
+        Queue Primary Keypad Function command without PIN.
+
+        Uses default_user number for authentication. Requires panel to be
+        configured to allow PIN-less operations for the specified user.
+
+        Args:
+            partition: Partition to operate on
+            function: Keypad function to perform (Disarm, ArmAway, ArmStay, etc.)
+        """
         message = bytearray()
         message.append(function.value)
         partition_mask = 1 << (partition.index - 1)
@@ -969,6 +1249,15 @@ class CaddxController:
     def send_primary_keypad_function_w_pin(
         self, partition: Partition, function: PrimaryKeypadFunctions
     ) -> None:
+        """
+        Queue Primary Keypad Function command with PIN authentication.
+
+        Uses default_code PIN for authentication. PIN is BCD-encoded before sending.
+
+        Args:
+            partition: Partition to operate on
+            function: Keypad function to perform (Disarm, ArmAway, ArmStay, etc.)
+        """
         message = bytearray()
         pin_array = pin_to_bytearray(self.default_code)
         message.extend(pin_array)
@@ -990,6 +1279,16 @@ class CaddxController:
     def send_primary_keypad_function(
         self, partition: Partition, function: PrimaryKeypadFunctions
     ) -> None:
+        """
+        Queue Primary Keypad Function using configured authentication method.
+
+        Automatically chooses PIN or user-based authentication based on which
+        default is configured (default_code takes precedence).
+
+        Args:
+            partition: Partition to operate on
+            function: Keypad function to perform (Disarm, ArmAway, ArmStay, etc.)
+        """
         if self.default_code is not None:
             self.send_primary_keypad_function_w_pin(partition, function)
         elif self.default_user is not None:
@@ -1000,6 +1299,12 @@ class CaddxController:
             )
 
     def send_disarm(self, partition: Partition) -> None:
+        """
+        Send disarm command to specified partition.
+
+        Args:
+            partition: Partition to disarm
+        """
         if partition.state == Partition.State.DISARMED:
             logger.error(
                 f"Attempt to disarm partition {partition.index} that is already disarmed."
@@ -1008,6 +1313,12 @@ class CaddxController:
         self.send_primary_keypad_function(partition, PrimaryKeypadFunctions.Disarm)
 
     def send_arm_home(self, partition: Partition) -> None:
+        """
+        Send arm stay (home) command to specified partition.
+
+        Args:
+            partition: Partition to arm in stay/home mode
+        """
         if (
             (partition.state == Partition.State.ARMED_HOME)
             or (partition.state == Partition.State.ARMED_AWAY)
@@ -1019,6 +1330,12 @@ class CaddxController:
         self.send_primary_keypad_function(partition, PrimaryKeypadFunctions.ArmStay)
 
     def send_arm_away(self, partition: Partition) -> None:
+        """
+        Send arm away command to specified partition.
+
+        Args:
+            partition: Partition to arm in away mode
+        """
         if (
             (partition.state == Partition.State.ARMED_HOME)
             or (partition.state == Partition.State.ARMED_AWAY)
@@ -1030,6 +1347,17 @@ class CaddxController:
         self.send_primary_keypad_function(partition, PrimaryKeypadFunctions.ArmAway)
 
     def _db_sync_start0(self) -> None:
+        """
+        Initialize and queue all commands for panel state synchronization.
+
+        Queues the following sequence:
+        1. Interface Configuration request (validates panel capabilities)
+        2. System Status request (discovers active partitions)
+        3. Zone Name and Zone Status requests for all configured zones
+           (excluding ignored zones)
+
+        All queued commands are processed sequentially by _process_command_queue().
+        """
         self.panel_synced = False
 
         # Do Interface Configuration Request to ensure that panel interface is configured correctly.

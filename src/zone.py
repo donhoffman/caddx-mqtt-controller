@@ -6,6 +6,12 @@ logger = logging.getLogger("app.zone")
 
 
 class ZoneTypeFlags(IntEnum):
+    """
+    Zone type flag bit definitions from Caddx protocol.
+
+    24-bit mask indicating zone type characteristics and behavior.
+    Defines how the zone operates (Fire, 24-hour, Entry/Exit delay, etc.).
+    """
     Fire = 0b_00000000_00000000_00000001  # Zone is a fire zone.
     Hour24 = 0b_00000000_00000000_00000010  # Zone is a 24-hour zone.
     KeySwitch = 0b_00000000_00000000_00000100  # Zone is a keyswitch zone.
@@ -39,6 +45,12 @@ class ZoneTypeFlags(IntEnum):
 
 
 class ZoneConditionFlags(IntEnum):
+    """
+    Zone condition flag bit definitions from Caddx protocol.
+
+    16-bit mask indicating current zone status and conditions.
+    Includes faulted, tampered, bypassed, trouble states, etc.
+    """
     Faulted = 0b_00000000_00000001  # Zone is faulted (aka "triggered").
     Tampered = 0b_00000000_00000010  # Zone is tampered.
     Trouble = 0b_00000000_00000100  # Zone showing trouble state.
@@ -53,22 +65,72 @@ class ZoneConditionFlags(IntEnum):
 
 
 class Zone(object):
+    """
+    Represents a physical alarm zone in the Caddx alarm panel.
+
+    Each zone has an index (1-based), name, and maintains state through
+    partition, type, and condition masks. Zones self-register in class-level
+    dictionaries for lookup by index or unique_name.
+
+    Attributes:
+        index: Zone number (1-based, server indexing)
+        name: Human-readable zone name from panel
+        unique_name: Generated identifier in format "zone_NNN"
+        is_updated: Flag indicating if zone state has changed
+    """
     zones_by_index: Dict[int, "Zone"] = {}
     zones_by_unique_name: Dict[str, "Zone"] = {}
 
     @classmethod
     def get_zone_by_index(cls, zone_id: int) -> Optional["Zone"]:
+        """
+        Retrieve a zone by its numeric index.
+
+        Args:
+            zone_id: The zone index (1-based)
+
+        Returns:
+            Zone object if found, None otherwise
+        """
         return cls.zones_by_index.get(zone_id)
 
     @classmethod
     def get_zone_by_unique_name(cls, unique_name: str) -> Optional["Zone"]:
+        """
+        Retrieve a zone by its unique name identifier.
+
+        Args:
+            unique_name: The zone unique name (format: "zone_NNN")
+
+        Returns:
+            Zone object if found, None otherwise
+        """
         return cls.zones_by_unique_name.get(unique_name)
 
     @classmethod
     def get_all_zones(cls) -> ValuesView["Zone"]:
+        """
+        Get all registered zones.
+
+        Returns:
+            View of all Zone objects
+        """
         return cls.zones_by_index.values()
 
     def __init__(self, index: int, name: str) -> None:
+        """
+        Initialize a new Zone.
+
+        The zone self-registers in class-level dictionaries for later lookup.
+        Duplicate indices or unique_names will trigger an assertion error.
+
+        Args:
+            index: Zone number (1-based, server indexing)
+            name: Human-readable zone name
+
+        Raises:
+            AssertionError: If index or unique_name already exists
+        """
         self.index = index
         self.name = name
         self.unique_name = f"zone_{self.index :03}"
@@ -85,14 +147,34 @@ class Zone(object):
 
     @property
     def is_bypassed(self) -> bool:
+        """
+        Check if the zone is currently bypassed.
+
+        Returns:
+            True if zone is bypassed, False otherwise
+        """
         return bool(ZoneConditionFlags.Bypassed & self._condition_mask)
 
     @property
     def is_faulted(self) -> bool:
+        """
+        Check if the zone is currently faulted (triggered).
+
+        Returns:
+            True if zone is faulted, False otherwise
+        """
         return bool(ZoneConditionFlags.Faulted & self._condition_mask)
 
     @property
     def is_trouble(self) -> bool:
+        """
+        Check if the zone has any trouble condition.
+
+        Trouble includes: tampered, trouble flag, low battery, or supervision lost.
+
+        Returns:
+            True if any trouble condition exists, False otherwise
+        """
         # Return True if tampered, trouble, low battery, or supervision lost
         return bool(
             ZoneConditionFlags.Tampered & self._condition_mask
@@ -102,12 +184,29 @@ class Zone(object):
         )
 
     def is_valid_partition(self, partition) -> bool:
+        """
+        Check if this zone belongs to the specified partition.
+
+        Args:
+            partition: Partition object to check membership
+
+        Returns:
+            True if zone is assigned to this partition, False otherwise
+        """
         # Check if the bit for this partition is set in the partition mask for this zone
         return bool(self._partition_mask & (1 << (partition.index - 1)))
 
     def set_masks(
         self, partition_mask: int, type_mask: int, condition_mask: int
     ) -> None:
+        """
+        Update zone state masks from panel status message.
+
+        Args:
+            partition_mask: 8-bit mask indicating partition membership
+            type_mask: 24-bit mask of zone type flags
+            condition_mask: 16-bit mask of zone condition flags
+        """
         self._partition_mask = partition_mask
         self._type_mask = type_mask
         self._condition_mask = condition_mask
@@ -115,6 +214,12 @@ class Zone(object):
         self.debug_zone_status()
 
     def debug_zone_status(self):
+        """
+        Log detailed zone status information at DEBUG level.
+
+        Outputs zone name, type mask, and condition flags in binary format
+        with human-readable flag names for all set bits.
+        """
         if logger.level > logging.DEBUG:
             return
         logger.debug(f"Zone {self.index} - {self.name}")

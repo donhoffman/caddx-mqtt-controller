@@ -3,6 +3,12 @@ from enum import Enum, IntEnum
 
 
 class PartitionConditionFlags(IntEnum):
+    """
+    Partition condition flag bit definitions from Caddx protocol.
+
+    48-bit mask indicating various partition states and conditions.
+    Each flag represents a specific partition status (Armed, Entry, Exit, etc.).
+    """
     # User code required to bypass zones.
     BypassCodeRequired = 0b_00000000_00000000_00000000_00000000_00000000_00000001
     # Fire trouble.
@@ -96,7 +102,32 @@ class PartitionConditionFlags(IntEnum):
 
 
 class Partition(object):
+    """
+    Represents an alarm partition in the Caddx alarm panel.
+
+    Partitions divide the alarm system into independent security areas (1-8).
+    The partition's alarm state is derived from its 48-bit condition flags
+    using a priority-based state machine. Partitions self-register in class-level
+    dictionaries for lookup by index or unique_name.
+
+    Attributes:
+        index: Partition number (1-8)
+        unique_name: Generated identifier in format "partition_N"
+        condition_flags: 48-bit mask of partition condition flags
+    """
     class State(Enum):
+        """
+        Alarm partition state enumeration for Home Assistant.
+
+        Maps partition condition flags to standard alarm states:
+        - DISARMED: System is off, ready to arm
+        - ARMED_HOME: Armed in stay mode (entry guard)
+        - ARMED_AWAY: Armed in away mode (full protection)
+        - PENDING: Entry or exit delay in progress
+        - TRIGGERED: Alarm is sounding
+        - ARMING: Exit delay in progress
+        - DISARMING: Disarm sequence in progress
+        """
         DISARMED = ("disarmed",)
         ARMED_HOME = ("armed_home",)
         ARMED_AWAY = ("armed_away",)
@@ -110,17 +141,53 @@ class Partition(object):
 
     @classmethod
     def get_partition_by_index(cls, index: int) -> Optional["Partition"]:
+        """
+        Retrieve a partition by its numeric index.
+
+        Args:
+            index: The partition index (1-8)
+
+        Returns:
+            Partition object if found, None otherwise
+        """
         return cls.partition_by_index.get(index)
 
     @classmethod
     def get_partition_by_unique_name(cls, unique_name: str) -> Optional["Partition"]:
+        """
+        Retrieve a partition by its unique name identifier.
+
+        Args:
+            unique_name: The partition unique name (format: "partition_N")
+
+        Returns:
+            Partition object if found, None otherwise
+        """
         return cls.partition_by_unique_name.get(unique_name)
 
     @classmethod
     def get_all_partitions(cls) -> ValuesView["Partition"]:
+        """
+        Get all registered partitions.
+
+        Returns:
+            View of all Partition objects
+        """
         return cls.partition_by_index.values()
 
     def __init__(self, index: int):
+        """
+        Initialize a new Partition.
+
+        The partition self-registers in class-level dictionaries for later lookup.
+        Duplicate indices will trigger an assertion error.
+
+        Args:
+            index: Partition number (1-8)
+
+        Raises:
+            AssertionError: If index is not in range 1-8 or already exists
+        """
         self.index = index
         assert 1 <= index <= 8
         self.unique_name = f"partition_{self.index}"
@@ -131,6 +198,21 @@ class Partition(object):
 
     @property
     def state(self) -> Optional["Partition.State"]:
+        """
+        Compute current alarm state from condition flags.
+
+        Uses a priority-based state machine:
+        1. TRIGGERED (highest) - Siren is active
+        2. ARMING - Armed with exit delay active
+        3. PENDING - Armed with entry delay active
+        4. ARMED_HOME - Armed with entry guard
+        5. ARMED_AWAY - Armed without entry guard
+        6. DISARMED - Ready to arm
+        7. PENDING (fallback) - Unknown state
+
+        Returns:
+            Current State enum value, or None if condition_flags not yet set
+        """
         if self.condition_flags is None:
             return None
         if (self.condition_flags & PartitionConditionFlags.SirenOn) or (
@@ -156,6 +238,15 @@ class Partition(object):
         return Partition.State.PENDING
 
     def log_condition(self, logger: Callable[[str], None]) -> None:
+        """
+        Log detailed partition condition flags.
+
+        Outputs the raw 48-bit condition flags value in hexadecimal,
+        followed by a space-separated list of all set flag names.
+
+        Args:
+            logger: Logging function to call with formatted strings
+        """
         logger(f"Partition {self.index} raw value: {self.condition_flags:0>12x}")
         log_entry = f"Partition {self.index} conditions: "
         for flag in PartitionConditionFlags:
