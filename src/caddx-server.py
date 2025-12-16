@@ -4,6 +4,7 @@ import signal
 import sys
 import argparse
 import logging
+from logging.handlers import RotatingFileHandler
 from serial import SerialException
 
 from caddx_controller import CaddxController
@@ -33,6 +34,12 @@ def main() -> int:
         type=str,
         help="Logging level",
         default=os.getenv("LOG_LEVEL", "INFO"),
+    )
+    parser.add_argument(
+        "--log-file",
+        type=str,
+        help="Optional log file path (with rotation). If not specified, logs to stdout (recommended for Docker)",
+        default=os.getenv("LOG_FILE", None),
     )
     parser.add_argument(
         "--serial", type=str, help="Serial port", default=os.getenv("SERIAL", None)
@@ -112,9 +119,33 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
+    # Configure logging
+    handlers = []
+
+    # Always log to stdout (Docker-friendly)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    handlers.append(console_handler)
+
+    # Optional file logging with rotation (for non-Docker deployments)
+    if args.log_file:
+        file_handler = RotatingFileHandler(
+            args.log_file,
+            maxBytes=10 * 1024 * 1024,  # 10MB
+            backupCount=5,
+        )
+        file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+        handlers.append(file_handler)
+
+    logging.basicConfig(
+        level=args.log_level,
+        handlers=handlers,
+    )
+
     logger = logging.getLogger(__name__)
     logger.info("Starting Caddx MQTT Server")
+    if args.log_file:
+        logger.info(f"Logging to file: {args.log_file} (max 10MB, 5 backups)")
 
     # Check for required arguments
     if args.serial is None:

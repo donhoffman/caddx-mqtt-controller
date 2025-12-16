@@ -598,7 +598,7 @@ except Exception as e:
 
 ---
 
-### 25. **No Logging Configuration**
+### 25. **No Logging Configuration** ✅ **COMPLETED**
 **Location:** `src/caddx-server.py:109`
 
 ```python
@@ -611,11 +611,20 @@ logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
 
 **Recommendation:** Add logging to file with rotation, or document that Docker handles log management.
 
+**Status:** ✅ **Completed 2025-12-15**
+- Added optional `--log-file` argument and `LOG_FILE` environment variable for file-based logging
+- File logging includes rotation (10MB max size, 5 backup files) using RotatingFileHandler
+- Default behavior unchanged: logs to stdout (Docker-friendly)
+- Updated compose.yml with Docker logging driver configuration (json-file with 10MB/3 files)
+- Both file logging and Docker log rotation prevent unbounded log growth
+- Non-Docker deployments can use `--log-file /path/to/log` for persistent logging
+- Example: `python caddx-server.py --log-file /var/log/caddx.log`
+
 ---
 
 ## Security Considerations 🔒
 
-### 26. **PIN Validation**
+### 26. **PIN Validation** ⚠️ **WON'T FIX**
 **Location:** `src/caddx_controller.py:21-31`
 
 ```python
@@ -630,9 +639,15 @@ def pin_to_bytearray(pin: str) -> bytearray:
 
 **Recommendation:** Add explicit check: `if not pin.isdigit():`
 
+**Status:** ⚠️ **Won't Fix - Allow Any Length PIN** 2025-12-15
+- The 4 or 6 character restriction is being removed to support panels with different PIN length requirements
+- System should allow any length PIN as different panel configurations may support different PIN lengths
+- Non-numeric PIN validation already happens implicitly via `int()` conversion with ValueError
+- Removing the length check provides more flexibility for various panel configurations
+
 ---
 
-### 27. **No MQTT TLS Support**
+### 27. **No MQTT TLS Support** ⚠️ **DEFERRED**
 **Location:** `src/mqtt_client.py:24-25`
 
 ```python
@@ -646,9 +661,15 @@ _tls_insecure: bool = False,
 
 **Recommendation:** Implement TLS support or remove unused parameters.
 
+**Status:** ⚠️ **Deferred to v2.0** 2025-12-15
+- TLS/SSL support for MQTT connections planned for v2.0
+- Will include certificate validation and insecure mode options
+- Most users run MQTT broker locally where TLS is not required
+- For remote brokers, recommend using VPN or SSH tunnel until TLS is implemented
+
 ---
 
-### 28. **Serial Port Permissions**
+### 28. **Serial Port Permissions** ⚠️ **DEFERRED**
 **Location:** `compose.yml:6-7`
 
 ```yaml
@@ -659,6 +680,12 @@ devices:
 **Issue:** Container requires raw device access, running as root.
 
 **Recommendation:** Document that container needs `--device` or `--privileged`, consider using host network mode for serial.
+
+**Status:** ⚠️ **Deferred to v2.0** 2025-12-15
+- Improved documentation for Docker serial port access planned for v2.0
+- Will document best practices for non-root container execution with serial devices
+- Current approach works correctly for most users
+- Container security hardening to be addressed in v2.0
 
 ---
 
@@ -710,7 +737,7 @@ from zone import Zone
 
 ---
 
-### 31. **Mixed Responsibilities**
+### 31. **Mixed Responsibilities** ⚠️ **DEFERRED**
 **Location:** `src/caddx_controller.py`
 
 **Issue:** Controller handles:
@@ -726,11 +753,18 @@ from zone import Zone
 - `serial_io.py` - Serial port communication
 - `controller.py` - High-level coordination
 
+**Status:** ⚠️ **Deferred to v2.0** 2025-12-15
+- Major architectural refactoring planned for v2.0
+- Will split controller into separate modules for better separation of concerns
+- Current monolithic structure is functional and well-tested
+- Refactoring will improve maintainability and testability
+- Planned modules: protocol.py, serial_io.py, controller.py
+
 ---
 
 ## Performance ⚡
 
-### 32. **Inefficient Byte Stuffing**
+### 32. **Inefficient Byte Stuffing** ⚠️ **DEFERRED**
 **Location:** `src/caddx_controller.py:779-787`
 
 ```python
@@ -747,9 +781,15 @@ for i in message:
 
 **Optimization:** Pre-calculate size or use list then join.
 
+**Status:** ⚠️ **Deferred to v2.0** 2025-12-15
+- Performance optimization planned for v2.0
+- Current implementation is correct and performance impact is negligible for small protocol messages
+- Will optimize to pre-calculate size or use list-based approach
+- Low priority as message sizes are typically small (< 100 bytes)
+
 ---
 
-### 33. **Synchronous MQTT Publishes Block Serial Reading**
+### 33. **Synchronous MQTT Publishes Block Serial Reading** ⚠️ **DEFERRED**
 **Location:** `src/mqtt_client.py:250-257`
 
 **Issue:** Publishing zone configs/states in loops blocks the control thread.
@@ -758,11 +798,18 @@ for i in message:
 
 **Recommendation:** Use threading or async/await pattern.
 
+**Status:** ⚠️ **Deferred to v2.0** 2025-12-15
+- Async I/O architecture planned for v2.0
+- Will refactor to use asyncio for concurrent serial and MQTT operations
+- Current synchronous approach works but could miss messages during heavy MQTT publishing
+- Related to item #8 (hardcoded sleep delays) - both will be addressed with async refactoring
+- Paho-mqtt already uses background thread for MQTT operations, but serial processing remains synchronous
+
 ---
 
 ## Documentation 📚
 
-### 34. **Missing Docstrings**
+### 34. **Missing Docstrings** ⚠️ **DEFERRED**
 **Location:** Most functions
 
 **Issue:** Only `_calculate_fletcher16` and `_process_command_queue` have docstrings.
@@ -770,6 +817,13 @@ for i in message:
 **Impact:** Hard for new contributors to understand function purposes.
 
 **Recommendation:** Add docstrings to public methods and complex private methods.
+
+**Status:** ⚠️ **Deferred to v2.0** 2025-12-15
+- Comprehensive documentation effort planned for v2.0
+- Will add docstrings to all public methods and complex private methods
+- Current code is reasonably self-documenting with clear function names and type hints
+- CLAUDE.md provides high-level architecture documentation
+- Priority: Add docstrings during v2.0 refactoring when module boundaries are clarified
 
 ---
 

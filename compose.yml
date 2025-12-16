@@ -11,3 +11,10 @@ services:
     working_dir: /app
     command: python3 caddx-server.py
     restart: "unless-stopped"
+    # Docker log rotation configuration (recommended)
+    # Prevents logs from growing unbounded
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"  # Maximum size of each log file
+        max-file: "3"    # Maximum number of log files to keep
