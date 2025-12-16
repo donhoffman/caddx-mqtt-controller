@@ -199,3 +199,31 @@ When marking an item as complete in REVIEW.md:
 ```
 
 This ensures we track progress and maintain a clear history of improvements.
+
+### Maintaining README.md
+
+**IMPORTANT**: The README.md file is the primary user-facing documentation for Docker deployment. Keep it synchronized with code changes.
+
+When making changes that affect deployment or usage:
+
+1. **Update README.md if the changes affect**:
+   - Environment variables (added, removed, renamed, or changed defaults)
+   - Configuration options or command-line arguments
+   - Docker image behavior or requirements
+   - MQTT topics or Home Assistant entity names
+   - Serial communication setup or requirements
+   - Troubleshooting procedures
+   - Software version number (in examples and references)
+   - Supported platforms or architectures
+
+2. **Examples of changes requiring README updates**:
+   - Adding new environment variable → Update Configuration Reference table
+   - Changing default values → Update both Overview and Configuration Reference
+   - Adding new command-line argument → Update Configuration section
+   - Modifying MQTT discovery topics → Update Home Assistant Integration section
+   - Changing serial protocol requirements → Update Requirements and Troubleshooting
+   - Release version bump → Update version references in examples
+
+3. **Commit README.md updates together with the related code changes** (same policy as REVIEW.md)
+
+The README should always reflect the current state of the code to prevent user confusion during deployment.
