@@ -163,6 +163,27 @@ Use Home Assistant's alarm control panel card or automation actions:
 
 ## Configuration Reference
 
+### Configuration Precedence
+
+Configuration values are resolved in the following order of priority (highest to lowest):
+
+1. **Command-line arguments** - Explicitly provided via `--argument` flags
+2. **Environment variables** - Set via `.env` file, `docker-compose.yml`, or shell export
+3. **Default values** - Built-in defaults specified in the application
+
+**Example:**
+```bash
+# Environment variable sets BAUD=19200
+BAUD=19200
+
+# Command-line argument overrides it to 38400
+python src/caddx-server.py --serial /dev/ttyUSB0 --baud 38400
+
+# Result: BAUD=38400 (command-line argument wins)
+```
+
+This allows you to set baseline configuration via environment variables while overriding specific values for testing or troubleshooting.
+
 ### Required Variables
 
 | Variable         | Description                                   | Example        |

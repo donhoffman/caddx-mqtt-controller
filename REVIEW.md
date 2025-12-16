@@ -838,12 +838,21 @@ for i in message:
 
 ---
 
-### 35. **Unclear Environment Variable Precedence**
+### 35. **Unclear Environment Variable Precedence** ✅ **COMPLETED**
 **Location:** `src/caddx-server.py`
 
 **Issue:** CLI args override env vars, but this isn't documented.
 
 **Recommendation:** Add help text explaining precedence: "CLI arg > env var > default"
+
+**Status:** ✅ **Completed 2025-12-16**
+- Added "Configuration Precedence" section to README.md explaining the priority order:
+  1. Command-line arguments (highest priority)
+  2. Environment variables
+  3. Default values (lowest priority)
+- Included practical example showing how CLI args override environment variables
+- Explains use case: set baseline config via env vars, override specific values for testing/troubleshooting
+- Documentation now clearly explains configuration resolution order for users
 
 ---
 
